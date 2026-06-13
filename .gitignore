@@ -1,0 +1,14 @@
+# Virtual environments
+.env
+.venv
+venv
+
+# Python cache
+__pycache__/
+
+# OS files
+*.DS_Store
+
+# Project docs not needed in repo
+AGENTS.md
+
