@@ -1,0 +1,11 @@
+.env
+
+.venv
+venv
+
+AGENTS.md
+
+*__pycache__*/
+*.DS_Store
+
+*.jar
