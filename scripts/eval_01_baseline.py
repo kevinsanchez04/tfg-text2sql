@@ -22,7 +22,7 @@ from contextlib import redirect_stdout, redirect_stderr
 from dotenv import load_dotenv
 load_dotenv()
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 import config
 from config import Provider
@@ -39,7 +39,6 @@ import argparse
 
 
 # Configuration
-QUERY_ID = 717
 BENCHMARK_SPEC_FILE = "db/bird-1/dev.json"
 
 def main(provider, force_thoughts=False, model=None):
@@ -103,8 +102,6 @@ def main(provider, force_thoughts=False, model=None):
         json_result = process_result()
         json_result['query_id'] = query_id
 
-        logs.append(json_result)
-
         print("\nINFERRED SPARKSQL QUERY:")
         print("-" * 40)
         sql_query = json_result.get('sparksql_query')
@@ -130,6 +127,8 @@ def main(provider, force_thoughts=False, model=None):
             print("No results available.")
 
         accuracies.append(execution_acc)
+        json_result['accuracy'] = execution_acc
+        logs.append(json_result)
 
     spark.stop()
     if accuracies:
