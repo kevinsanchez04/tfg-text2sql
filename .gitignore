@@ -5,9 +5,19 @@ venv
 
 AGENTS.md
 
-*__pycache__*/
+# Python
+__pycache__/
+*.py[cod]
+
+# OS
 *.DS_Store
 
+# Java / Spark
 *.jar
 
+# Logs
 logs/
+
+test_ast.json
+prova_ast.json
+visual_graph.png
