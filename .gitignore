@@ -18,6 +18,4 @@ __pycache__/
 # Logs
 logs/
 
-test_ast.json
-prova_ast.json
-visual_graph.png
+data/
