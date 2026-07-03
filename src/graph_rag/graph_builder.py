@@ -1,9 +1,10 @@
 import networkx as nx
+from networkx.readwrite import json_graph
 import matplotlib.pyplot as plt
 import json
 
-def build_graph():
-    with open('test_ast.json') as json_file:
+def build_graph(filename='data/ast/test_ast.json'):
+    with open(filename) as json_file:
         ast = json.load(json_file)
 
     G = nx.Graph()
@@ -64,6 +65,12 @@ def build_graph():
 
     return G
 
+def save_graph(G, filename='data/graphs/propert_graph.json'):
+    data = json_graph.node_link_data(G)
+    with open(filename, 'w') as f:
+        json.dump(data, f, indent=4)
+    print(f"Graph successfully saved to {filename}")
+
 def verify_graph(G):
     print(f"Nodes: {G.number_of_nodes()} | Edges: {G.number_of_edges()}\n")
     
@@ -83,9 +90,10 @@ def verify_graph(G):
     edge_labels = {(u, v): f"w:{d.get('weight')}" for u, v, d in G.edges(data=True)}
     nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels, font_color='red')
     
-    plt.savefig("visual_graph.png", bbox_inches="tight", dpi=300)
+    plt.savefig("data/graphs/visual_graph.png", bbox_inches="tight", dpi=300)
 
 if __name__ == "__main__":
     G = build_graph()
-    verify_graph(G)
+    save_graph(G)
+    #verify_graph(G)
     print(f"Graph built with {G.number_of_nodes()} nodes and {G.number_of_edges()} edges.")

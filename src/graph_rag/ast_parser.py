@@ -99,5 +99,5 @@ def ast_parser():
 
 if __name__ == "__main__":
     results = ast_parser()
-    with open("test_ast.json", "w") as f:
+    with open("data/ast/ast.json", "w") as f:
         json.dump(results, f, indent=4)
