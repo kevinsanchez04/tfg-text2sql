@@ -3,7 +3,7 @@ from networkx.readwrite import json_graph
 import matplotlib.pyplot as plt
 import json
 
-def build_graph(filename='data/ast/test_ast.json'):
+def build_graph(filename='data/ast/ast.json'):
     with open(filename) as json_file:
         ast = json.load(json_file)
 
@@ -65,7 +65,7 @@ def build_graph(filename='data/ast/test_ast.json'):
 
     return G
 
-def save_graph(G, filename='data/graphs/propert_graph.json'):
+def save_graph(G, filename='data/graphs/property_graph.json'):
     data = json_graph.node_link_data(G)
     with open(filename, 'w') as f:
         json.dump(data, f, indent=4)

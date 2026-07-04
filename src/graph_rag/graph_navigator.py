@@ -1,15 +1,101 @@
 import networkx as nx
-import matplotlib.pyplot as plt
+from networkx.readwrite import json_graph
 import json
+import itertools
 
-def graph_navigator(t1, t2):
-    with open('test_ast.json') as json_file:
-        ast = json.load(json_file)
+def load_graph(filename='data/graphs/property_graph.json'):
+    with open(filename, 'r') as f:
+        data = json.load(f)
+    return json_graph.node_link_graph(data)
+
+def graph_navigator(tables: list, top_k_meta=3):
+    G = load_graph()
     
-    G = nx.Graph()
+    # filter out hallucinated or missing tables
+    valid_tables = [t for t in tables if G.has_node(t)]
+    
+    if not valid_tables:
+        return "No valid historical tables identified."
 
+    prompt = ""
+    best_paths_nodes = set()
+    join_conditions = set()
+    
+    if len(valid_tables) == 1:
+        # no joins needed, just extract metadata for the single table
+        prompt += "### SINGLE TABLE QUERY ###\nNo JOINs required.\n"
+        best_paths_nodes.add(valid_tables[0])
+    
+    else:
+        prompt += "### SUGGESTED JOIN CONDITIONS ###\n"
+        
+        # generate all unique pairs of requested tables
+        pairs = list(itertools.combinations(valid_tables, 2))
+        
+        for u, v in pairs:
+            paths = list(nx.all_simple_paths(G, source=u, target=v, cutoff=3))
+            if not paths:
+                continue
+            
+            # evaluate paths for current pair
+            max_w = -1
+            best_path = []
+            for p in paths:
+                weight_p = sum(G[p[i]][p[i+1]].get("weight", 0) for i in range(len(p)-1))
+                if weight_p > max_w:
+                    max_w = weight_p
+                    best_path = p
+            
+            # extract conditions and nodes from the winning path
+            if best_path:
+                best_paths_nodes.update(best_path)
+                for i in range(len(best_path) - 1):
+                    n1, n2 = best_path[i], best_path[i+1]
+                    cond = G[n1][n2].get("condition", "Unknown")
+                    # using set to ensure overlapping paths don't create duplicate rules
+                    t_a, t_b = sorted([n1, n2])
+                    join_conditions.add(f"- For joining {t_a} and {t_b} use: {cond}")
+
+        if join_conditions:
+            prompt += "\n".join(sorted(join_conditions)) + "\n"
+        else:
+            prompt += "No historical JOIN paths found.\n"
+            best_paths_nodes.update(valid_tables)
+
+    # append metadata for all nodes involved in the resolution
+    prompt += "\n### HISTORICAL METADATA ###\n"
+    
+    for node in sorted(best_paths_nodes):
+        cols = G.nodes[node].get("columns_freq", {})
+        logic = G.nodes[node].get("logic_freq", {})
+        
+        top_cols = sorted(cols.items(), key=lambda x: x[1], reverse=True)[:top_k_meta]
+        top_logic = sorted(logic.items(), key=lambda x: x[1], reverse=True)[:top_k_meta]
+        
+        prompt += f"\nTable: [{node}]\n"
+        
+        if top_cols:
+            cols_str = ", ".join([f"{c[0]} (freq: {c[1]})" for c in top_cols])
+            prompt += f"  - Top Columns: {cols_str}\n"
+        else:
+            prompt += "  - Top Columns: None\n"
+            
+        if top_logic:
+            prompt += "  - Common Filters:\n"
+            for l in top_logic:
+                prompt += f"    * {l[0]} (freq: {l[1]})\n"
+        else:
+            prompt += "  - Common Filters: None\n"
+    
+    return prompt
 
 if __name__ == "__main__":
-    prompt = graph_navigator()
-    #verify_graph(G)
-    print(f"Prompt generated:\n\n{prompt}")
+    # test scenarios
+    print("--- TEST 1: Two tables ---")
+    print(graph_navigator(['molecule', 'connected']))
+    
+    print("\n--- TEST 2: Three tables ---")
+    print(graph_navigator(['molecule', 'atom', 'connected']))
+    
+    print("\n--- TEST 3: One table ---")
+    print(graph_navigator(['molecule']))

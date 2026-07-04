@@ -3,7 +3,7 @@ import os
 import argparse
 
 def main(input_log_path, output_log_path):
-    dev_file_path = "../db/bird-1/dev.json"
+    dev_file_path = "db/bird-1/dev.json"
 
     if not os.path.exists(input_log_path) or not os.path.exists(dev_file_path):
         print("Error: Required files not found. Please check your paths.")
