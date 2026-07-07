@@ -1,0 +1,114 @@
+[
+    {
+        "question_id": 205,
+        "db_id": "toxicology",
+        "question": "Identify by their ID the molecules in which there is carbon.",
+        "evidence": "carbon refers to element = 'c';",
+        "SQL": "SELECT T.molecule_id FROM atom AS T WHERE T.element = 'c'",
+        "difficulty": "simple"
+    },
+    {
+        "question_id": 215,
+        "db_id": "toxicology",
+        "question": "How many atoms with iodine and with sulfur type elements are there in single bond molecules?",
+        "evidence": "with iodine element refer to element = 'i'; with sulfur element refers to element = 's'; single type bond refers to bond_type = '-'; Should consider the distinct atoms when counting;",
+        "SQL": "SELECT COUNT(DISTINCT CASE WHEN T1.element = 'i' THEN T1.atom_id ELSE NULL END) AS iodine_nums , COUNT(DISTINCT CASE WHEN T1.element = 's' THEN T1.atom_id ELSE NULL END) AS sulfur_nums FROM atom AS T1 INNER JOIN connected AS T2 ON T1.atom_id = T2.atom_id INNER JOIN bond AS T3 ON T2.bond_id = T3.bond_id WHERE T3.bond_type = '-'",
+        "difficulty": "challenging"
+    },
+    {
+        "question_id": 221,
+        "db_id": "toxicology",
+        "question": "What are the atoms that are bonded in the molecule TR001 with the bond ID of TR001_2_6?",
+        "evidence": "TR001 is the molecule id; TR001_2_6 is the bond id",
+        "SQL": "SELECT SUBSTR(T.bond_id, 1, 7) AS atom_id1 , T.molecule_id || SUBSTR(T.bond_id, 8, 2) AS atom_id2 FROM bond AS T WHERE T.molecule_id = 'TR001' AND T.bond_id = 'TR001_2_6'",
+        "difficulty": "simple"
+    },
+    {
+        "question_id": 225,
+        "db_id": "toxicology",
+        "question": "Please list top five molecules that have double bonds in alphabetical order.",
+        "evidence": "double bond refers to bond_type = ' = ';",
+        "SQL": "SELECT DISTINCT T.molecule_id FROM bond AS T WHERE T.bond_type = '=' ORDER BY T.molecule_id LIMIT 5",
+        "difficulty": "simple"
+    },
+    {
+        "question_id": 229,
+        "db_id": "toxicology",
+        "question": "What is the type of bond that molecule TR000 has when involved in any bonds?",
+        "evidence": "type of bond refers to bond_type; TR000 is the molecule id",
+        "SQL": "SELECT DISTINCT T.bond_type FROM bond AS T WHERE T.molecule_id = 'TR000'",
+        "difficulty": "simple"
+    },
+    {
+        "question_id": 254,
+        "db_id": "toxicology",
+        "question": "What percentage of bonds have the most common combination of atoms' elements?",
+        "evidence": "DIVIDE(COUNT(bond_id), COUNT(atom_id where MAX(COUNT(atom_id)) ))",
+        "SQL": "SELECT CAST((SELECT COUNT(T1.atom_id) FROM connected AS T1 INNER JOIN bond AS T2 ON T1.bond_id = T2.bond_id GROUP BY T2.bond_type ORDER BY COUNT(T2.bond_id) DESC LIMIT 1 ) AS REAL) * 100 / ( SELECT COUNT(atom_id) FROM connected )",
+        "difficulty": "moderate"
+    },
+    {
+        "question_id": 269,
+        "db_id": "toxicology",
+        "question": "How many bond id have element iodine?",
+        "evidence": "iodine refers to element = 'i'",
+        "SQL": "SELECT COUNT(T3.bond_id) FROM atom AS T1 INNER JOIN molecule AS T2 ON T1.molecule_id = T2.molecule_id INNER JOIN bond AS T3 ON T2.molecule_id = T3.molecule_id WHERE T1.element = 'i'",
+        "difficulty": "simple"
+    },
+    {
+        "question_id": 292,
+        "db_id": "toxicology",
+        "question": "Identify the atoms belong to the molecule with ID between TR010 to TR050 that contain the element carbon.",
+        "evidence": "carbon refers to element = 'c'; between TR010 to TR050 refers to substr(molecule_id, 3, 3)>=10 AND substr(molecule_id, 3, 3) <= 50",
+        "SQL": "SELECT T.atom_id FROM atom AS T WHERE T.molecule_id BETWEEN 'TR010' AND 'TR050' AND T.element = 'c'",
+        "difficulty": "simple"
+    },
+    {
+        "question_id": 306,
+        "db_id": "toxicology",
+        "question": "Which molecules have triple bonds and list all the elements they contain.",
+        "evidence": "triple bond refers to bond_type = '#'; element = 'cl' means Chlorine; element = 'c' means Carbon; element = 'h' means Hydrogen; element = 'o' means Oxygen, element = 's' means Sulfur; element = 'n' means Nitrogen, element = 'p' means Phosphorus, element = 'na' means Sodium, element = 'br' means Bromine, element = 'f' means Fluorine; element = 'i' means Iodine; element = 'sn' means Tin; element = 'pb' means Lead; element = 'te' means Tellurium; element = 'ca' means Calcium",
+        "SQL": "SELECT DISTINCT T1.molecule_id, T2.element FROM bond AS T1 INNER JOIN atom AS T2 ON T1.molecule_id = T2.molecule_id WHERE T1.bond_type = '#'",
+        "difficulty": "challenging"
+    },
+    {
+        "question_id": 308,
+        "db_id": "toxicology",
+        "question": "How many bonds are created by bonding atoms with chlorine element?",
+        "evidence": "chlorine refers to element = 'cl'",
+        "SQL": "SELECT COUNT(T1.bond_id) FROM connected AS T1 INNER JOIN atom AS T2 ON T1.atom_id = T2.atom_id WHERE T2.element = 'cl'",
+        "difficulty": "simple"
+    },
+    {
+        "question_id": 311,
+        "db_id": "toxicology",
+        "question": "How many molecules without sulphur element is not having double bond?",
+        "evidence": "double bond refers to bond_type = ' = '; bond_type ! = ' = '; sulphur refers to element = 's'",
+        "SQL": "SELECT COUNT(DISTINCT T1.molecule_id) FROM atom AS T1 INNER JOIN bond AS T2 ON T1.molecule_id = T2.molecule_id WHERE T1.element <> 's' AND T2.bond_type <> '='",
+        "difficulty": "simple"
+    },
+    {
+        "question_id": 324,
+        "db_id": "toxicology",
+        "question": "Find the percentage of atoms with single bond.",
+        "evidence": "single bond refers to bond_type = '-'; percentage = DIVIDE(SUM(bond_type = '-'), COUNT(bond_id)) as percentage",
+        "SQL": "SELECT CAST(COUNT(CASE WHEN T.bond_type = '-' THEN T.bond_id ELSE NULL END) AS REAL) * 100 / COUNT(T.bond_id) FROM bond t",
+        "difficulty": "simple"
+    },
+    {
+        "question_id": 328,
+        "db_id": "toxicology",
+        "question": "List all the elements with double bond, consisted in molecule TR024.",
+        "evidence": "double bond refers to bond_type = '='; element = 'cl' means Chlorine; element = 'c' means Carbon; element = 'h' means Hydrogen; element = 'o' means Oxygen, element = 's' means Sulfur; element = 'n' means Nitrogen, element = 'p' means Phosphorus, element = 'na' means Sodium, element = 'br' means Bromine, element = 'f' means Fluorine; element = 'i' means Iodine; element = 'sn' means Tin; element = 'pb' means Lead; element = 'te' means Tellurium; element = 'ca' means Calcium",
+        "SQL": "SELECT T1.element FROM atom AS T1 INNER JOIN bond AS T2 ON T1.molecule_id = T2.molecule_id WHERE T1.molecule_id = 'TR024' AND T2.bond_type = '='",
+        "difficulty": "challenging"
+    },
+    {
+        "question_id": 338,
+        "db_id": "toxicology",
+        "question": "What is the atom ID of double bonded carbon in TR012 molecule?",
+        "evidence": "carbon refers to element = 'c'; double bond refers to bond_type = ' = ';",
+        "SQL": "SELECT T1.atom_id FROM atom AS T1 INNER JOIN molecule AS T2 ON T1.molecule_id = T2.molecule_id INNER JOIN bond AS T3 ON T2.molecule_id = T3.molecule_id WHERE T2.molecule_id = 'TR012' AND T3.bond_type = '=' AND T1.element = 'c'",
+        "difficulty": "moderate"
+    }
+]

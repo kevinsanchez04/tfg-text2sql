@@ -3,7 +3,7 @@ from networkx.readwrite import json_graph
 import matplotlib.pyplot as plt
 import json
 
-def build_graph(filename='data/ast/ast.json'):
+def build_graph(spark=None, filename='data/ast/ast.json'):
     with open(filename) as json_file:
         ast = json.load(json_file)
 
@@ -15,7 +15,8 @@ def build_graph(filename='data/ast/ast.json'):
         # Process nodes and update frequency metadata for the Property Graph
         for node in query_nodes:
             if not G.has_node(node):
-                G.add_node(node, columns_freq={}, logic_freq={})
+                # Initialize node with empty property dictionaries
+                G.add_node(node, columns_freq={}, logic_freq={}, sample_values={})
             
             # Extract and count column usage statistics
             for col in query.get("columns", []):
@@ -63,21 +64,52 @@ def build_graph(filename='data/ast/ast.json'):
             else:
                 G.add_edge(u, v, weight=1, condition=normalized_condition)
 
+    # --- BUILD-TIME ENTITY RESOLUTION ---
+    # Fetch sample values for relevant columns and store them statically in the graph
+    if spark is not None:
+        print("\nStarting Build-Time Entity Resolution...")
+        for node in G.nodes():
+            sample_values = {}
+            # Only fetch data for columns that actually appeared in the AST
+            columns_to_resolve = list(G.nodes[node].get("columns_freq", {}).keys())
+            
+            for col in columns_to_resolve:
+                try:
+                    # Fetch up to 3 distinct, non-null categorical values
+                    query = f"SELECT DISTINCT `{col}` FROM `{node}` WHERE `{col}` IS NOT NULL LIMIT 3"
+                    rows = spark.sql(query).collect()
+                    vals = [str(row[0]) for row in rows if row[0] is not None]
+                    
+                    if vals:
+                        sample_values[col] = vals
+                except Exception:
+                    # Silently skip if column doesn't exist or has a complex un-stringifiable type
+                    continue
+                    
+            G.nodes[node]["sample_values"] = sample_values
+            if sample_values:
+                print(f"  -> Resolved entities for [{node}]: {list(sample_values.keys())}")
+    else:
+        print("\nWarning: No Spark session provided. Entity Resolution skipped.")
+
     return G
 
 def save_graph(G, filename='data/graphs/property_graph.json'):
     data = json_graph.node_link_data(G)
     with open(filename, 'w') as f:
         json.dump(data, f, indent=4)
-    print(f"Graph successfully saved to {filename}")
+    print(f"\nGraph successfully saved to {filename}")
 
 def verify_graph(G):
-    print(f"Nodes: {G.number_of_nodes()} | Edges: {G.number_of_edges()}\n")
+    print(f"\nNodes: {G.number_of_nodes()} | Edges: {G.number_of_edges()}\n")
     
     for node, data in G.nodes(data=True):
         print(f"[{node}]")
         print(f"  Cols: {data.get('columns_freq')}")
-        print(f"  Logic: {data.get('logic_freq')}\n")
+        print(f"  Logic: {data.get('logic_freq')}")
+        if data.get('sample_values'):
+            print(f"  Samples: {data.get('sample_values')}")
+        print()
 
     for u, v, data in G.edges(data=True):
         print(f"[{u}] <-> [{v}] (w:{data.get('weight')})")
@@ -93,7 +125,31 @@ def verify_graph(G):
     plt.savefig("data/graphs/visual_graph.png", bbox_inches="tight", dpi=300)
 
 if __name__ == "__main__":
-    G = build_graph()
+    # Import tools specifically for running this script standalone
+    import sys
+    import os
+    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'src')))
+    
+    try:
+        from utils import ensure_sqlite_jdbc_driver
+        from load_db import load_tables
+        from spark_nl import get_spark_session
+        
+        # Initialize Spark locally for Graph Building
+        jdbc_jar_path = ensure_sqlite_jdbc_driver()
+        spark = get_spark_session(extra_configs={
+            "spark.jars": jdbc_jar_path,
+            "spark.driver.extraClassPath": jdbc_jar_path,
+        })
+        # Load the target database into Spark before querying
+        load_tables(spark, "toxicology")
+        
+        G = build_graph(spark=spark)
+        spark.stop()
+        
+    except ImportError:
+        print("Could not load Spark dependencies. Building graph without Entity Resolution.")
+        G = build_graph()
+
     save_graph(G)
-    #verify_graph(G)
-    print(f"Graph built with {G.number_of_nodes()} nodes and {G.number_of_edges()} edges.")
+    verify_graph(G)
