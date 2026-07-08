@@ -38,8 +38,6 @@ def build_schema_map(pruned: Dict[str, List[str]], graph: nx.Graph) -> str:
             table_def = f"[{tag}] {t}({', '.join(cols)})"
             lines.append(table_def)
             
-            # --- BUILD-TIME ENTITY RESOLUTION ---
-            # Recuperamos los valores pre-calculados sin llamar a la base de datos
             if tag == "REQUIRED":
                 samples = graph.nodes[t].get("sample_values", {})
                 if samples:
@@ -62,10 +60,10 @@ def graph_navigator(tables: List[str], nl_query: str, llm: Any = None) -> Tuple[
     """
     G = load_graph()
     
-    # 1. Ensure tables exist in the graph
+    # Ensure tables exist in the graph
     valid_tables = [t for t in tables if G.has_node(t)]
     
-    # 2. Pre-calculate all shortest paths between valid tables to find bridges
+    # Pre-calculate all shortest paths between valid tables to find bridges
     all_pair_paths = {}
     for i in range(len(valid_tables)):
         for j in range(i + 1, len(valid_tables)):
@@ -77,7 +75,7 @@ def graph_navigator(tables: List[str], nl_query: str, llm: Any = None) -> Tuple[
             except nx.NetworkXNoPath:
                 continue
 
-    # 3. Context Pruning
+    # Context Pruning
     pruned_dict = prune_candidate_tables(
         nl_query=nl_query,
         candidate_tables=valid_tables,
@@ -86,14 +84,14 @@ def graph_navigator(tables: List[str], nl_query: str, llm: Any = None) -> Tuple[
         llm=llm
     )
     
-    # 4. Filter the best paths to only include those between required/bridge tables
+    # Filter the best paths to only include those between required/bridge tables
     final_nodes = set(pruned_dict["required"] + pruned_dict["bridge"])
     best_path_per_pair = {}
     for (u, v), path in all_pair_paths.items():
         if u in final_nodes and v in final_nodes:
              best_path_per_pair[(u, v)] = path
 
-    # 5. Build the text prompt (Schema Map) reading the pre-computed values
+    # Build the text prompt (Schema Map) reading the pre-computed values
     prompt_text = build_schema_map(pruned_dict, G)
     
     return prompt_text, best_path_per_pair
