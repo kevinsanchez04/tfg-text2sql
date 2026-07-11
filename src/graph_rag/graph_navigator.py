@@ -2,8 +2,14 @@ import networkx as nx
 from networkx.readwrite import json_graph
 import json
 import itertools
+import os
 
 def load_graph(filename='data/graphs/property_graph.json'):
+    
+    if not os.path.exists(filename):
+        print(f"Warning: Graph file not found at {filename}")
+        return nx.Graph()
+    
     with open(filename, 'r') as f:
         data = json.load(f)
     return json_graph.node_link_graph(data)

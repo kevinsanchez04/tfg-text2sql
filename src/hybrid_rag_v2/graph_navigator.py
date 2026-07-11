@@ -1,97 +1,174 @@
 import networkx as nx
+from networkx.readwrite import json_graph
 import json
 import os
-from typing import List, Tuple, Dict, Any
+import numpy as np
 
-from hybrid_rag_v2.schema_pruner import prune_candidate_tables
 
-def load_graph(graph_path: str = "db/bird-1/toxicology/property_graph.json") -> nx.Graph:
-    """Loads the property graph from JSON."""
-    G = nx.Graph()
-    if not os.path.exists(graph_path):
-        print(f"Warning: Graph file not found at {graph_path}")
-        return G
-        
-    with open(graph_path, "r", encoding="utf-8") as f:
-        data = json.load(f)
-        
-    for node, attrs in data.get("nodes", {}).items():
-        G.add_node(node, **attrs)
-    for edge in data.get("edges", []):
-        G.add_edge(edge["source"], edge["target"], weight=edge.get("weight", 1.0))
-        
-    return G
+def calculate_similarity(vector1, vector2):
+    if not vector1 or not vector2:
+        return 0
 
-def build_schema_map(pruned: Dict[str, List[str]], graph: nx.Graph) -> str:
-    """
-    Substitutes the raw metadata block with a compact map without logic_freq numbers.
-    Reads pre-computed sample values directly from the graph properties for Entity Resolution.
-    """
-    lines = ["### SCHEMA MAP (curated) ###"]
-    
-    for tag, tables in [("REQUIRED", pruned["required"]), ("BRIDGE-ONLY", pruned["bridge"])]:
-        for t in tables:
-            if not graph.has_node(t):
-                continue
-                
-            cols = list(graph.nodes[t].get("columns_freq", {}).keys())[:6]
-            table_def = f"[{tag}] {t}({', '.join(cols)})"
-            lines.append(table_def)
-            
-            if tag == "REQUIRED":
-                samples = graph.nodes[t].get("sample_values", {})
-                if samples:
-                    lines.append("    CRITICAL - EXACT VALUES TO USE IN 'WHERE' CLAUSE:")
-                    for c, vals in samples.items():
-                        lines.append(f"      - {c}: You MUST map natural language to one of these: {vals}")
-                        
-    if pruned["bridge"]:
-        lines.append(
-            "\nNote: BRIDGE-ONLY tables exist solely to connect REQUIRED tables via JOIN. "
-            "Do not select or filter on their columns unless the question explicitly asks for them."
-        )
-        
-    return "\n".join(lines)
-
-def graph_navigator(tables: List[str], nl_query: str, llm: Any = None) -> Tuple[str, Dict]:
-    """
-    Generates the structural context based on the query and candidate tables.
-    Returns the formatted prompt string and a dictionary of the best paths.
-    """
-    G = load_graph()
-    
-    # Ensure tables exist in the graph
-    valid_tables = [t for t in tables if G.has_node(t)]
-    
-    # Pre-calculate all shortest paths between valid tables to find bridges
-    all_pair_paths = {}
-    for i in range(len(valid_tables)):
-        for j in range(i + 1, len(valid_tables)):
-            u, v = valid_tables[i], valid_tables[j]
-            try:
-                # Assuming weight represents frequency, we want the "lightest" cost.
-                path = nx.shortest_path(G, source=u, target=v) 
-                all_pair_paths[(u, v)] = path
-            except nx.NetworkXNoPath:
-                continue
-
-    # Context Pruning
-    pruned_dict = prune_candidate_tables(
-        nl_query=nl_query,
-        candidate_tables=valid_tables,
-        graph=G,
-        all_pair_paths=all_pair_paths,
-        llm=llm
+    return np.dot(vector1, vector2) / (
+        np.linalg.norm(vector1) * np.linalg.norm(vector2)
     )
-    
-    # Filter the best paths to only include those between required/bridge tables
-    final_nodes = set(pruned_dict["required"] + pruned_dict["bridge"])
-    best_path_per_pair = {}
-    for (u, v), path in all_pair_paths.items():
-        if u in final_nodes and v in final_nodes:
-             best_path_per_pair[(u, v)] = path
 
-    # Build the text prompt (Schema Map) reading the pre-computed values
-    prompt_text = build_schema_map(pruned_dict, G)
-    
-    return prompt_text, best_path_per_pair
+
+def load_graph(file_path="data/graphs/property_graph.json"):
+    if not os.path.exists(file_path):
+        print(f"Warning: Graph file not found: {file_path}")
+        return nx.Graph()
+
+    with open(file_path, "r") as file:
+        graph_data = json.load(file)
+
+    return nx.Graph(json_graph.node_link_graph(graph_data))
+
+
+def graph_navigator(nl_query: str,
+                    tables: list,
+                    embedder=None,
+                    top_k_metadata=3):
+
+    graph = load_graph()
+
+    available_tables = [
+        table for table in tables
+        if graph.has_node(table)
+    ]
+
+    if not available_tables:
+        return "No valid historical tables identified."
+
+    prompt = ""
+    relevant_nodes = set()
+    join_rules = set()
+
+    query_embedding = (
+        embedder.embed_query(nl_query)
+        if embedder else None
+    )
+
+    if len(available_tables) == 1:
+        prompt += "### SINGLE TABLE QUERY ###\n"
+        prompt += "No JOINs required.\n"
+        relevant_nodes.add(available_tables[0])
+
+    else:
+        prompt += "### SUGGESTED JOIN CONDITIONS ###\n"
+
+        connected_tables = {available_tables[0]}
+        pending_tables = set(available_tables[1:])
+
+        while pending_tables:
+            best_path = []
+            best_score = -1
+            selected_target = None
+
+            for source_table in connected_tables:
+                for target_table in pending_tables:
+                    paths = list(
+                        nx.all_simple_paths(
+                            graph,
+                            source=source_table,
+                            target=target_table,
+                            cutoff=3
+                        )
+                    )
+
+                    for path in paths:
+                        historical_score = sum(
+                            graph[path[i]][path[i + 1]].get("weight", 0)
+                            for i in range(len(path) - 1)
+                        )
+
+                        semantic_score = 0
+
+                        if embedder and query_embedding:
+                            path_text = " ".join(path)
+                            path_embedding = embedder.embed_query(path_text)
+
+                            semantic_score = calculate_similarity(
+                                query_embedding,
+                                path_embedding
+                            )
+
+                        total_score = historical_score + (semantic_score * 10)
+
+                        if total_score > best_score:
+                            best_score = total_score
+                            best_path = path
+                            selected_target = target_table
+
+            if best_path:
+                relevant_nodes.update(best_path)
+                connected_tables.update(best_path)
+                pending_tables.remove(selected_target)
+
+                for i in range(len(best_path) - 1):
+                    left_table = best_path[i]
+                    right_table = best_path[i + 1]
+
+                    condition = graph[left_table][right_table].get(
+                        "condition",
+                        "Unknown"
+                    )
+
+                    table_a, table_b = sorted([left_table, right_table])
+
+                    join_rules.add(
+                        f"- For joining {table_a} and {table_b} use: {condition}"
+                    )
+            else:
+                relevant_nodes.update(pending_tables)
+                break
+
+        if join_rules:
+            prompt += "\n".join(sorted(join_rules)) + "\n"
+        else:
+            prompt += "No historical JOIN paths found.\n"
+
+    prompt += "\n### HISTORICAL METADATA ###\n"
+
+    for table in sorted(relevant_nodes):
+        columns = graph.nodes[table].get("columns_freq", {})
+        operations = graph.nodes[table].get("operations_freq", {})
+        aggregations = graph.nodes[table].get("aggregations_freq", {})
+        predicates = graph.nodes[table].get("predicates_freq", {})
+        samples = graph.nodes[table].get("sample_values", {})
+
+        top_columns = sorted(columns.items(), key=lambda item: item[1], reverse=True)[:top_k_metadata]
+        
+        # Filter out 0-frequency operations and sort by usage
+        active_operations = [k for k, v in sorted(operations.items(), key=lambda item: item[1], reverse=True) if v > 0]
+        active_aggregations = [k for k, v in sorted(aggregations.items(), key=lambda item: item[1], reverse=True) if v > 0]
+        active_predicates = [k for k, v in sorted(predicates.items(), key=lambda item: item[1], reverse=True) if v > 0]
+
+        prompt += f"\nTable: [{table}]\n"
+
+        if top_columns:
+            prompt += "  - Frequently referenced columns: " + ", ".join(column for column, _ in top_columns) + "\n"
+
+        if samples:
+            prompt += "  - Sample data formats:\n"
+            for col, vals in samples.items():
+                if vals:
+                    prompt += f"    * {col}: {vals}\n"
+
+        prompt += "  - Historical SQL patterns:\n"
+        
+        has_patterns = False
+        if active_predicates:
+            prompt += f"    * WHERE clauses frequently use: {', '.join(active_predicates[:top_k_metadata])}\n"
+            has_patterns = True
+        if active_operations:
+            prompt += f"    * Used operators: {', '.join(active_operations)}\n"
+            has_patterns = True
+        if active_aggregations:
+            prompt += f"    * Aggregations: {', '.join(active_aggregations)}\n"
+            has_patterns = True
+            
+        if not has_patterns:
+            prompt += "    * No structural patterns identified.\n"
+
+    return prompt

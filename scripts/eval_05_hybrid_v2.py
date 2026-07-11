@@ -23,6 +23,7 @@ from utils import ensure_sqlite_jdbc_driver, pretty_print_result
 import argparse
 
 from hybrid_rag_v2.orchestrator import get_hybrid_context
+from langchain_huggingface import HuggingFaceEmbeddings
 
 BENCHMARK_SPEC_FILE = "db/bird-1/dev.json"
 
@@ -56,6 +57,7 @@ def main(provider, force_thoughts=False, model=None):
     llm = get_llm(provider=provider, model=model)
     spark_sql = get_spark_sql()
     agent = get_spark_agent(spark_sql, llm)
+    embedder=HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
 
     accuracies = []
     logs = []
@@ -73,10 +75,7 @@ def main(provider, force_thoughts=False, model=None):
             print(f"Error executing golden query: {e}")
             continue
 
-        # Reutilizamos las instancias persistentes de llm, spark_sql y agent
-        hybrid_context = get_hybrid_context(nl_query=nl_query, query_id=query_id, llm=llm, spark_sql=spark_sql)
-
-        enriched_query = f"{hybrid_context}\n\nUse this context to solve the following question:\nCurrent Question: {nl_query}"
+        enriched_query = get_hybrid_context(nl_query=nl_query, query_id=query_id, llm=llm, spark_sql=spark_sql, embedder=embedder)
 
         run_nl_query(agent, enriched_query, llm)
 
@@ -84,7 +83,7 @@ def main(provider, force_thoughts=False, model=None):
         json_result['query_id'] = query_id
 
         print(f"\n[QID {query_id}] INFERRED SPARKSQL QUERY:")
-        sql_query = json_result.get('sparksql_query')
+        sql_query = json_result.get('sparksql_query', '')
         print(f"\033[94m{sql_query}\033[0m" if sql_query else "\033[91mNo SQL query generated.\033[0m")
 
         execution_acc = 0.0

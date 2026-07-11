@@ -27,5 +27,10 @@ def get_similar_queries_context(nl_query: str, exclude_query_id: int, top_k: int
         example_q = results['documents'][0][i]
         example_sql = results['metadatas'][0][i]['golden_sql']
         rag_context += f"- Example Question: '{example_q}'\n  Expected SQL: {example_sql}\n\n"
-        
-    return rag_context
+    
+    if 'distances' in results and len(results['distances'][0]) > 0:
+        best_distance = results['distances'][0][0]
+    else:
+        best_distance = float('inf')
+
+    return rag_context, best_distance

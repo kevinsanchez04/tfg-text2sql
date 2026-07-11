@@ -1,54 +1,48 @@
-# src/hybrid_rag_v2/orchestrator.py
 from vector_rag.retriever import get_similar_queries_context
 from hybrid_rag_v2.graph_navigator import graph_navigator
 from graph_rag.schema_linker import extract_tables_from_query
 
+# V3 Instructions: Strictly forbidding data leakage and hardcoding
+INSTRUCTIONS = """--- CRITICAL INSTRUCTIONS ---
+You are a master SparkSQL data analyst. 
+1. Use the Semantic Examples and Historical Metadata ONLY as a structural reference for the SparkSQL dialect and schema logic.
+2. DO NOT blindly copy the examples and DO NOT hardcode values from the Historical Metadata unless explicitly requested by the user. If the question asks for aggregates ("most common", "top", "maximum"), you MUST use dynamic SQL (GROUP BY, ORDER BY DESC, LIMIT 1) to calculate it, NEVER hardcode the WHERE clause to guess the answer.
+3. Follow the Structural Context strictly for JOINs and table routing.
+4. STRICT CASING: Pay close attention to the capitalization in the Sample Data. If the sample values for a column are strictly lowercase, you MUST convert your filtering strings to lowercase to match the database format.
+"""
 
-VALUE_LINKING_GUARD = (
-    "\n### VALUE LINKING INSTRUCTIONS ###\n"
-    "1. For literal string/symbol values in WHERE clauses (codes, abbreviations, "
-    "symbols like '=', '-', '#', or single/double-letter element codes), you MUST "
-    "trust the 'CRITICAL - EXACT VALUES' entries in the SCHEMA MAP and the literal "
-    "values used in the 'Expected SQL' of the REFERENCE EXAMPLES below, over your own "
-    "general knowledge of how such concepts are usually spelled out "
-    "(e.g. write 'i', not 'Iodine'; write '=', not 'Double').\n"
-    "2. For table selection and JOIN structure, follow ONLY the SCHEMA MAP and "
-    "STRUCTURAL HINT above. Do NOT add a table just because a REFERENCE EXAMPLE below "
-    "happens to use it, if that table is not required to answer the current question.\n"
-)
-
-
-def get_hybrid_context(nl_query: str, query_id: int, llm, spark_sql) -> str:
+def get_hybrid_context(nl_query: str, query_id: int, llm, spark_sql, embedder) -> str:
     """
-    Combines structural context from the pruned Graph (table/JOIN selection —
-    authoritative) with semantic context from the Vector DB (value/vocabulary
-    linking — authoritative for literals only).
+    Combines semantic context from Vector DB, structural context from Graph,
+    and filtered entity resolution samples.
     """
-
-    # --- Structural context (pruned schema + join hints) ---
-    all_tables = spark_sql.get_usable_table_names()
-    tables = extract_tables_from_query(nl_query, all_tables, llm)
-    graph_context, best_paths = graph_navigator(tables, nl_query, llm)
-
-    hint_text = ""
-    if best_paths:
-        chains = [" -> ".join(p) for p in best_paths.values()]
-        hint_text = (
-            "\n### STRUCTURAL HINT (guidance only, not a hard rule) ###\n"
-            + "\n".join(f"- Suggested path: {c}" for c in chains)
-            + "\nUse this only if it matches the question's logic. If the question can be "
-            "answered with fewer tables than shown here, prefer the simpler query.\n"
-        )
-
-    # --- Semantic context (few-shot examples, for value/vocabulary linking) ---
+    # 1. Fetch semantic context (Few-Shot examples)
     vector_context = get_similar_queries_context(nl_query, exclude_query_id=query_id)
+    vector_text = vector_context[0] if isinstance(vector_context, tuple) else vector_context
 
-    final_context = (
-        f"{graph_context}"
-        f"{hint_text}"
-        f"\n### REFERENCE EXAMPLES (similar past NL->SQL pairs) ###\n"
-        f"{vector_context}"
-        f"{VALUE_LINKING_GUARD}"
-    )
+    # 2. Fetch required tables and strictly filtered sample values
+    all_tables = spark_sql.get_usable_table_names()
+    selected_tables, entity_samples = extract_tables_from_query(nl_query, all_tables, llm)
+    
+    # 3. Fetch structural context (AST Patterns and JOIN paths)
+    graph_context = graph_navigator(nl_query=nl_query, tables=selected_tables, embedder=embedder)
+    
+    # 4. Build the final prompt sequentially
+    enriched_context = INSTRUCTIONS
+    enriched_context += f"\n\n--- SEMANTIC CONTEXT (Examples) ---\n{vector_text}\n\n"
+    
+    # Conditionally inject Entity Resolution ONLY if relevant samples were found
+    if entity_samples:
+        enriched_context += "--- ENTITY RESOLUTION (Sample Values) ---\n"
+        for table, cols in entity_samples.items():
+            enriched_context += f"Table [{table}]:\n"
+            for col, vals in cols.items():
+                enriched_context += f"  - Column '{col}' matches categorical values: {vals}\n"
+        enriched_context += "\n"
 
-    return final_context
+    enriched_context += f"--- STRUCTURAL CONTEXT (Graph Rules) ---\n{graph_context}\n\n"
+
+    enriched_context += f"--- USER QUESTION ---\nGenerate the SparkSQL query to answer the following question:\n{nl_query}\n\n"
+    
+    
+    return enriched_context
