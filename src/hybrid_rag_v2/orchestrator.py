@@ -2,7 +2,6 @@ from vector_rag.retriever import get_similar_queries_context
 from hybrid_rag_v2.graph_navigator import graph_navigator
 from graph_rag.schema_linker import extract_tables_from_query
 
-# V3 Instructions: Strictly forbidding data leakage and hardcoding
 INSTRUCTIONS = """--- CRITICAL INSTRUCTIONS ---
 You are a master SparkSQL data analyst. 
 1. Use the Semantic Examples and Historical Metadata ONLY as a structural reference for the SparkSQL dialect and schema logic.
@@ -16,18 +15,18 @@ def get_hybrid_context(nl_query: str, query_id: int, llm, spark_sql, embedder) -
     Combines semantic context from Vector DB, structural context from Graph,
     and filtered entity resolution samples.
     """
-    # 1. Fetch semantic context (Few-Shot examples)
+    # Fetch semantic context (Few-Shot examples)
     vector_context = get_similar_queries_context(nl_query, exclude_query_id=query_id)
     vector_text = vector_context[0] if isinstance(vector_context, tuple) else vector_context
 
-    # 2. Fetch required tables and strictly filtered sample values
+    # Fetch required tables and strictly filtered sample values
     all_tables = spark_sql.get_usable_table_names()
     selected_tables, entity_samples = extract_tables_from_query(nl_query, all_tables, llm)
     
-    # 3. Fetch structural context (AST Patterns and JOIN paths)
+    # Fetch structural context (AST Patterns and JOIN paths)
     graph_context = graph_navigator(nl_query=nl_query, tables=selected_tables, embedder=embedder)
     
-    # 4. Build the final prompt sequentially
+    # Build the final prompt sequentially
     enriched_context = INSTRUCTIONS
     enriched_context += f"\n\n--- SEMANTIC CONTEXT (Examples) ---\n{vector_text}\n\n"
     

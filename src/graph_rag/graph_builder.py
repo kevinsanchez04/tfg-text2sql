@@ -78,7 +78,7 @@ def build_graph(spark=None, filename='data/ast/ast.json'):
             if not source or not target or source == target:
                 continue
 
-            # Normalización alfabética para evitar aristas duplicadas inversas
+            # Normalization for avoiding duplicates edges
             if source > target:
                 source, target = target, source
 

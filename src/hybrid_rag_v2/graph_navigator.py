@@ -6,6 +6,7 @@ import numpy as np
 
 
 def calculate_similarity(vector1, vector2):
+    """Calculates cosine similarity between two embeddings to measure semantic closeness."""
     if not vector1 or not vector2:
         return 0
 
@@ -22,6 +23,7 @@ def load_graph(file_path="data/graphs/property_graph.json"):
     with open(file_path, "r") as file:
         graph_data = json.load(file)
 
+    # Reconstruct the NetworkX graph object from the saved dictionary format
     return nx.Graph(json_graph.node_link_graph(graph_data))
 
 
@@ -29,7 +31,11 @@ def graph_navigator(nl_query: str,
                     tables: list,
                     embedder=None,
                     top_k_metadata=3):
-
+    """
+    Builds the structural context for the LLM. 
+    It finds the best JOIN paths connecting the requested tables and appends 
+    historical metadata to guide the SQL generation.
+    """
     graph = load_graph()
 
     available_tables = [
@@ -50,6 +56,7 @@ def graph_navigator(nl_query: str,
     )
 
     if len(available_tables) == 1:
+        # Fast exit for simple queries to prevent unnecessary graph traversal
         prompt += "### SINGLE TABLE QUERY ###\n"
         prompt += "No JOINs required.\n"
         relevant_nodes.add(available_tables[0])
@@ -57,6 +64,8 @@ def graph_navigator(nl_query: str,
     else:
         prompt += "### SUGGESTED JOIN CONDITIONS ###\n"
 
+        # Incremental subgraph construction to ensure all tables are connected 
+        # without leaving isolated components. We start with the first table and grow.
         connected_tables = {available_tables[0]}
         pending_tables = set(available_tables[1:])
 
@@ -67,6 +76,7 @@ def graph_navigator(nl_query: str,
 
             for source_table in connected_tables:
                 for target_table in pending_tables:
+                    # Look for short paths (cutoff=3) to prevent overly complex routing
                     paths = list(
                         nx.all_simple_paths(
                             graph,
@@ -85,6 +95,7 @@ def graph_navigator(nl_query: str,
                         semantic_score = 0
 
                         if embedder and query_embedding:
+                            # Evaluate if the tables in this path conceptually match the user's question
                             path_text = " ".join(path)
                             path_embedding = embedder.embed_query(path_text)
 
@@ -93,6 +104,8 @@ def graph_navigator(nl_query: str,
                                 path_embedding
                             )
 
+                        # Hybrid routing cost: Prevents "popularity bias" where highly connected 
+                        # tables always win, by boosting paths that are semantically relevant
                         total_score = historical_score + (semantic_score * 10)
 
                         if total_score > best_score:
@@ -101,10 +114,12 @@ def graph_navigator(nl_query: str,
                             selected_target = target_table
 
             if best_path:
+                # Absorb the found path into our connected component
                 relevant_nodes.update(best_path)
                 connected_tables.update(best_path)
                 pending_tables.remove(selected_target)
 
+                # Extract the specific SQL conditions used historically between these nodes
                 for i in range(len(best_path) - 1):
                     left_table = best_path[i]
                     right_table = best_path[i + 1]
@@ -114,12 +129,14 @@ def graph_navigator(nl_query: str,
                         "Unknown"
                     )
 
+                    # Sort table names to avoid duplicate rules like A-B and B-A
                     table_a, table_b = sorted([left_table, right_table])
 
                     join_rules.add(
                         f"- For joining {table_a} and {table_b} use: {condition}"
                     )
             else:
+                # Fallback if the graph is disconnected (no path exists)
                 relevant_nodes.update(pending_tables)
                 break
 
@@ -130,6 +147,7 @@ def graph_navigator(nl_query: str,
 
     prompt += "\n### HISTORICAL METADATA ###\n"
 
+    # Inject contextual hints into the prompt so the LLM uses the correct schema logic
     for table in sorted(relevant_nodes):
         columns = graph.nodes[table].get("columns_freq", {})
         operations = graph.nodes[table].get("operations_freq", {})
@@ -150,6 +168,7 @@ def graph_navigator(nl_query: str,
             prompt += "  - Frequently referenced columns: " + ", ".join(column for column, _ in top_columns) + "\n"
 
         if samples:
+            # Crucial for preventing hallucinations on literal values (e.g. knowing bond type is '#' not 'Triple')
             prompt += "  - Sample data formats:\n"
             for col, vals in samples.items():
                 if vals:

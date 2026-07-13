@@ -113,7 +113,7 @@ def main():
                 })
         load_tables(spark, "toxicology")
     except Exception as e:
-        print(f"[!] Failed to initialize Spark: {e}")
+        print(f"Failed to initialize Spark: {e}")
         sys.exit(1)
 
     try:
@@ -172,7 +172,7 @@ def main():
             print(f"    => New Relaxed Accuracy:     {avg_new:.2%} ({sign}{diff:.2%})")
 
     except KeyboardInterrupt:
-        print("\n\n[!] Execution interrupted by user (Ctrl+C). Cleaning up...")
+        print("\n\nExecution interrupted by user (Ctrl+C). Cleaning up...")
     finally:
         print("[*] Shutting down Spark session...")
         spark.stop()

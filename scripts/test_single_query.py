@@ -151,20 +151,20 @@ def main(provider, query_id, force_thoughts=False, model=None):
         config.FORCE_THOUGHT_GENERATION = True
         print("[Config] Force thought generation: ENABLED")
 
-    # 1. Fetch original question and expected SQL
+    # Fetch original question and expected SQL
     try:
         nl_query, golden_sql = get_query_details(query_id)
     except Exception as e:
-        print(f"[!] Error: {e}")
+        print(f"Error: {e}")
         sys.exit(1)
 
     print("=" * 60)
-    print(" 🚀 HYBRID RAG V2 - SINGLE QUERY TEST ")
+    print(" HYBRID RAG V2 - SINGLE QUERY TEST ")
     print("=" * 60)
     print(f"Database: {DB_NAME}")
     print("=" * 60)
 
-    # 2. Setup Local Spark Session
+    # Setup Local Spark Session
     print("[*] Starting Local Spark Session...")
     jdbc_jar_path = ensure_sqlite_jdbc_driver()
     spark = get_spark_session(extra_configs={
@@ -173,13 +173,13 @@ def main(provider, query_id, force_thoughts=False, model=None):
     })
     load_tables(spark, DB_NAME)
 
-    # 3. Setup Agent & LLM
+    # Setup Agent & LLM
     print(f"[*] Initializing LLM ({provider}) and Spark Agent...")
     llm = get_llm(provider=provider, model=model)
     spark_sql = get_spark_sql()
     agent = get_spark_agent(spark_sql, llm)
 
-    # 4. Generate Hybrid Context V2
+    # Generate Hybrid Context V2
     print("[*] Generating Hybrid RAG V2 Context...")
     enriched_query = get_hybrid_context(
         nl_query=nl_query, 
@@ -190,12 +190,12 @@ def main(provider, query_id, force_thoughts=False, model=None):
     )
 
 
-    # 5. Execute Agent
+    # Execute Agent
     print("[*] Executing LLM Agent...")
     run_nl_query(agent, enriched_query, llm)
     json_result = process_result()
 
-    # 6. Display Generated SQL
+    # Display Generated SQL
     print("\n" + "="*60)
     print(f"Query ID: {query_id}")
     print(f"Question: {nl_query}")
@@ -205,7 +205,7 @@ def main(provider, query_id, force_thoughts=False, model=None):
     sql_query = json_result.get('sparksql_query')
     print(f"\033[94m{sql_query}\033[0m" if sql_query else "\033[91mNo SQL query generated.\033[0m")
 
-    # 7. Evaluate Accuracy
+    # Evaluate Accuracy
     print("\n" + "="*60)
     print("ACCURACY EVALUATION:")
     print("-" * 40)
@@ -221,11 +221,11 @@ def main(provider, query_id, force_thoughts=False, model=None):
             accuracy_score = execution_accuracy(df_golden, df_generated)
             print(f"Accuracy Score: \033[92m{accuracy_score * 100:.2f}%\033[0m")
         except Exception as e:
-            print(f"\033[91m[!] Error evaluating accuracy (likely malformed generated SQL): {e}\033[0m")
+            print(f"\033[91mError evaluating accuracy (likely malformed generated SQL): {e}\033[0m")
     else:
         print("\033[91mAccuracy Score: 0.00% (Execution Failed or No Query)\033[0m")
 
-    # 8. Display Data Result
+    # Display Data Result
     """print(f"\nDATA RESULTS FOR QID {query_id}:")
     print("-" * 40)
     if json_result.get('execution_status') == "VALID":
@@ -235,7 +235,7 @@ def main(provider, query_id, force_thoughts=False, model=None):
     else:
         print("No results available.")"""
     
-    # Debugging output: Print the exact prompt the LLM will see
+    # Prompt which the LLM will see
     print("\n" + "="*60)
     print("EXACT PROMPT SENT TO THE LLM:")
     print("="*60)

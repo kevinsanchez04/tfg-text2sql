@@ -50,10 +50,6 @@ def main(provider, force_thoughts=False, model=None):
             })
     load_tables(spark, db_name)
 
-    # ------------------------------------------------------------------
-    # 🌟 OPTIMIZACIÓN CRÍTICA: Inicializamos una sola vez FUERA del bucle
-    # ------------------------------------------------------------------
-    print("[Setup] Inicializando infraestructura del Agente...")
     llm = get_llm(provider=provider, model=model)
     spark_sql = get_spark_sql()
     agent = get_spark_agent(spark_sql, llm)
@@ -68,7 +64,6 @@ def main(provider, force_thoughts=False, model=None):
         nl_query = item['question']
         golden_query = item['SQL']
         
-        # Obtenemos ground truth
         try:
             ground_truth = spark.sql(golden_query).toPandas()
         except Exception as e:
