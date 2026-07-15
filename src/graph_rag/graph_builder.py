@@ -88,10 +88,13 @@ def build_graph(spark=None, filename='data/ast/ast.json'):
             else:
                 normalized_condition = condition
 
-            if G.has_edge(source, target) and G[source][target].get("condition") == normalized_condition:
-                G[source][target]["weight"] += 1
-            else:
-                G.add_edge(source, target, weight=1, condition=normalized_condition)
+            if not G.has_edge(source, target):
+                G.add_edge(source, target, weight=0, conditions={})
+
+            edge_data = G[source][target]
+            edge_data["conditions"][normalized_condition] = edge_data["conditions"].get(normalized_condition, 0) + 1
+            edge_data["weight"] = sum(edge_data["conditions"].values())
+            edge_data["condition"] = max(edge_data["conditions"], key=edge_data["conditions"].get)
 
     # Optional entity resolution using Spark
     if spark is not None:
@@ -136,16 +139,10 @@ def verify_graph(G):
 
     for u, v, data in G.edges(data=True):
         print(f"[{u}] -> [{v}] (w:{data.get('weight')})")
-        print(f"  Cond: {data.get('condition')}\n")
+        print(f"  Main condition: {data.get('condition')}")
+        print(f"  All conditions (freq): {data.get('conditions')}\n")
 
-    plt.figure(figsize=(10, 8))
-    pos = nx.spring_layout(G, k=0.8, seed=42)
-    nx.draw(G, pos, with_labels=True, node_color='lightblue', node_size=2000, font_size=9, edge_color='gray')
-    edge_labels = {(u, v): f"w:{d.get('weight')}" for u, v, d in G.edges(data=True)}
-    nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels, font_color='red')
-    plt.savefig("data/graphs/visual_graph.png", bbox_inches="tight", dpi=300)
-
-
+        
 if __name__ == "__main__":
     import sys
     import os

@@ -38,15 +38,34 @@ def extract_structural_patterns(sql_query):
         return True
 
     # WHERE
+    implicit_join_nodes = set()
+    for w in parsed.find_all(exp.Where):
+        for eq in w.find_all(exp.EQ):
+            if isinstance(eq.left, exp.Column) and isinstance(eq.right, exp.Column):
+                t_left = get_table(eq.left)
+                t_right = get_table(eq.right)
+
+                # If the columns belong to different tables, this is an implicit join
+                if t_left and t_right and t_left != t_right:
+                    implicit_join_nodes.add(id(eq.left))
+                    implicit_join_nodes.add(id(eq.right))
+
+    # Count the actual filter predicates
     for w in parsed.find_all(exp.Where):
         touched = set()
         for c in w.find_all(exp.Column):
+            # Skip columns that were used in an implicit join
+            if id(c) in implicit_join_nodes:
+                continue
+
             t = get_table(c)
             if t and ensure(t):
                 touched.add(t)
                 name = c.name.lower()
                 preds = table_patterns[t]["predicates"]
                 preds[name] = preds.get(name, 0) + 1
+
+        # Count the WHERE operation only if the table has actual filter predicates
         for t in touched:
             table_patterns[t]["operations"]["WHERE"] += 1
 
@@ -136,6 +155,34 @@ def ast_parser():
                             "target": tables_in_join[1],
                             "condition": condition_str
                         })
+            
+            # Extract implicit join edges from the WHERE clause
+            for w in sql_root.find_all(exp.Where):
+                for eq in w.find_all(exp.EQ):
+                    left = eq.left
+                    right = eq.right
+
+                    # Check that both operands are columns
+                    if isinstance(left, exp.Column) and isinstance(right, exp.Column):
+                        table_left = left.table
+                        table_right = right.table
+
+                        # Skip columns that belong to subquery aliases
+                        if table_left and table_right and table_left not in subquery_aliases and table_right not in subquery_aliases:
+                            real_table_left = alias_map.get(table_left, table_left)
+                            real_table_right = alias_map.get(table_right, table_right)
+                            
+                            # If the tables are different, this is an implicit join
+                            if real_table_left != real_table_right:
+                                col_left_full = f"{real_table_left}.{left.name}"
+                                col_right_full = f"{real_table_right}.{right.name}"
+                                
+                                edges.append({
+                                    "source": real_table_left,
+                                    "target": real_table_right,
+                                    "condition": f"{col_left_full} = {col_right_full}"
+                                })
+
 
             # Extract columns
             for c in sql_root.find_all(exp.Column):

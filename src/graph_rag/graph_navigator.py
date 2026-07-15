@@ -4,6 +4,8 @@ import json
 import itertools
 import os
 
+JOIN_ALTERNATIVE_THRESHOLD = 0.3  # The second condition must have at least 30% of the first condition's weight
+
 def load_graph(filename='data/graphs/property_graph.json'):
     
     if not os.path.exists(filename):
@@ -13,6 +15,27 @@ def load_graph(filename='data/graphs/property_graph.json'):
     with open(filename, 'r') as f:
         data = json.load(f)
     return json_graph.node_link_graph(data)
+
+
+def _format_join_conditions(edge_data):
+    """Return the join condition(s) for an edge, including common alternatives."""
+
+    conditions = edge_data.get("conditions")
+
+    if not conditions:
+        return [edge_data.get("condition", "Unknown")]
+
+    ranked = sorted(conditions.items(), key=lambda kv: kv[1], reverse=True)
+    top_cond, top_freq = ranked[0]
+
+    selected = [top_cond]
+    for cond, freq in ranked[1:]:
+        # Include alternative conditions if they are frequent enough
+        if freq / top_freq >= JOIN_ALTERNATIVE_THRESHOLD:
+            selected.append(cond)
+
+    return selected
+
 
 def graph_navigator(tables: list, top_k_meta=3):
     G = load_graph()
@@ -57,10 +80,19 @@ def graph_navigator(tables: list, top_k_meta=3):
                 best_paths_nodes.update(best_path)
                 for i in range(len(best_path) - 1):
                     n1, n2 = best_path[i], best_path[i+1]
-                    cond = G[n1][n2].get("condition", "Unknown")
+                    edge_data = G[n1][n2]
                     # using set to ensure overlapping paths don't create duplicate rules
                     t_a, t_b = sorted([n1, n2])
-                    join_conditions.add(f"- For joining {t_a} and {t_b} use: {cond}")
+
+                    alt_conditions = _format_join_conditions(edge_data)
+                    if len(alt_conditions == 1):
+                        join_conditions.add(f"- For joining {t_a} and {t_b} use: {alt_conditions[0]}")
+                    else:
+                        alt_str = " OR ".join(alt_conditions)
+                        join_conditions.add(
+                            f"- For joining {t_a} and {t_b}, multiple valid conditions exist "
+                            f"depending on context, choose the correct one: {alt_str}"
+                        )
 
         if join_conditions:
             prompt += "\n".join(sorted(join_conditions)) + "\n"
