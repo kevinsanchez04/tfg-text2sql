@@ -1,12 +1,13 @@
 # src/vector_rag/retriever.py
 import chromadb
+from paths import get_vector_store_path, get_vector_collection_name
 
-def get_similar_queries_context(nl_query: str, exclude_query_id: int, top_k: int = 3) -> str:
+def get_similar_queries_context(nl_query: str, exclude_query_id: int, db_name: str, top_k: int = 3) -> str:
     """Look it up in Chroma DB and returns the context in string format"""
     
     # Connect Chroma
-    chroma_client = chromadb.PersistentClient(path="./db/vector_store")
-    collection = chroma_client.get_collection(name="toxicology_queries")
+    chroma_client = chromadb.PersistentClient(path=get_vector_store_path(db_name))
+    collection = chroma_client.get_collection(name=get_vector_collection_name(db_name))
     
     # Safe top_k calculation
     total_docs = collection.count()

@@ -1,14 +1,15 @@
 import json
 import os
+from paths import get_graph_path
 
-def load_schema_metadata_from_graph(graph_path="data/graphs/property_graph.json"):
+def load_schema_metadata_from_graph(db_name):
     """
     Load schema information from the property graph and build a dictionary
     containing columns and raw sample values for each table.
     """
+    graph_path = get_graph_path(db_name)
     if not os.path.exists(graph_path):
         return {}
-
     with open(graph_path, "r") as file:
         graph_data = json.load(file)
 
@@ -28,7 +29,7 @@ def load_schema_metadata_from_graph(graph_path="data/graphs/property_graph.json"
     return schema_metadata
 
 
-def extract_tables_from_query(nl_query: str, available_tables: list, llm) -> tuple:
+def extract_tables_from_query(nl_query: str, available_tables: list, llm, db_name: str) -> tuple:
     """
     Use the language model to determine which tables are needed to answer
     the user's question, and strictly filter sample values to prevent data leakage.
@@ -36,7 +37,7 @@ def extract_tables_from_query(nl_query: str, available_tables: list, llm) -> tup
     Returns:
         tuple: (selected_tables: list, filtered_sample_values: dict)
     """
-    schema_metadata = load_schema_metadata_from_graph()
+    schema_metadata = load_schema_metadata_from_graph(db_name)
 
     # Build context for the router LLM
     router_context = {}

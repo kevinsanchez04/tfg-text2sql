@@ -1,6 +1,11 @@
 import json
 import sqlglot
 from sqlglot import exp
+import argparse
+import sys, os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
+    
+from paths import get_ast_path
 
 DEV_FILE = "db/bird-1/dev.json"
 
@@ -103,13 +108,13 @@ def extract_structural_patterns(sql_query):
     return table_patterns
 
 
-def ast_parser():
+def ast_parser(db_name):
     queries = json.load(open(DEV_FILE))
-    toxicology_queries = [q for q in queries if 195 <= q["question_id"] <= 339]
+    db_queries = [q for q in queries if q.get("db_id") == db_name]
 
     all_asts = []
 
-    for q in toxicology_queries:
+    for q in db_queries:
         query_id = q["question_id"]
         sql_query = q["SQL"]
 
@@ -225,6 +230,12 @@ def ast_parser():
 
 
 if __name__ == "__main__":
-    results = ast_parser()
-    with open("data/ast/ast.json", "w") as f:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--db", type=str, required=True)
+    args = parser.parse_args()
+
+    results = ast_parser(args.db)
+    ast_output_path = get_ast_path(args.db)
+    os.makedirs(os.path.dirname(ast_output_path), exist_ok=True)
+    with open(ast_output_path, "w") as f:
         json.dump(results, f, indent=4)

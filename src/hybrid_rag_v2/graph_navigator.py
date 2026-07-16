@@ -1,10 +1,11 @@
 import math
-
 import networkx as nx
 from networkx.readwrite import json_graph
 import json
 import os
 import numpy as np
+from paths import get_graph_path
+
 
 JOIN_ALTERNATIVE_THRESHOLD = 0.3 # The second condition must have at least 30% of the first condition's weight
 
@@ -19,7 +20,8 @@ def calculate_similarity(vector1, vector2):
     )
 
 
-def load_graph(file_path="data/graphs/property_graph.json"):
+def load_graph(db_name):
+    file_path = get_graph_path(db_name)
     if not os.path.exists(file_path):
         print(f"Warning: Graph file not found: {file_path}")
         return nx.Graph()
@@ -52,6 +54,7 @@ def _format_join_conditions(edge_data):
 
 def graph_navigator(nl_query: str,
                     tables: list,
+                    db_name: str,
                     embedder=None,
                     top_k_metadata=3):
     """
@@ -59,7 +62,7 @@ def graph_navigator(nl_query: str,
     It finds the best JOIN paths connecting the requested tables and appends 
     historical metadata to guide the SQL generation.
     """
-    graph = load_graph()
+    graph = load_graph(db_name)
 
     max_edge_weight = max([data.get("weight", 0) for _, _, data in graph.edges(data=True)]) if graph.number_of_edges() > 0 else 1
 

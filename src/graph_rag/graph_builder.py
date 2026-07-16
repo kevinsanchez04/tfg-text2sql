@@ -2,8 +2,13 @@ import networkx as nx
 from networkx.readwrite import json_graph
 import matplotlib.pyplot as plt
 import json
+import sys, os
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from paths import get_ast_path, get_graph_path
+import argparse
 
-def build_graph(spark=None, filename='data/ast/ast.json'):
+def build_graph(db_name, spark=None):
+    filename = get_ast_path(db_name)
     with open(filename) as json_file:
         ast = json.load(json_file)
 
@@ -118,7 +123,9 @@ def build_graph(spark=None, filename='data/ast/ast.json'):
 
     return G
 
-def save_graph(G, filename='data/graphs/property_graph.json'):
+def save_graph(G, db_name):
+    filename = get_graph_path(db_name)
+    os.makedirs(os.path.dirname(filename), exist_ok=True)
     data = json_graph.node_link_data(G)
     with open(filename, 'w') as f:
         json.dump(data, f, indent=4)
@@ -144,11 +151,13 @@ def verify_graph(G):
 
         
 if __name__ == "__main__":
-    import sys
-    import os
-
     # Ensure project root is in the Python path
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'src')))
+
+    arg_parser = argparse.ArgumentParser()
+    arg_parser.add_argument("--db", type=str, required=True)
+    args = arg_parser.parse_args()
+    DB_NAME = args.db
 
     try:
         # Optional Spark dependencies
@@ -166,10 +175,10 @@ if __name__ == "__main__":
         })
 
         # Load database tables into Spark
-        load_tables(spark, "toxicology")
+        load_tables(spark, DB_NAME)
 
         # Build property graph with entity resolution enabled
-        G = build_graph(spark=spark)
+        G = build_graph(DB_NAME, spark=spark)
 
         # Stop Spark session
         spark.stop()
@@ -177,10 +186,10 @@ if __name__ == "__main__":
     except ImportError:
         # Fallback when Spark is not available
         print("Could not load Spark dependencies. Building graph without Entity Resolution.")
-        G = build_graph()
+        G = build_graph(DB_NAME)
 
     # Save graph to disk
-    save_graph(G)
+    save_graph(G, DB_NAME)
 
     # Print and visualize graph
     verify_graph(G)

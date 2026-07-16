@@ -221,7 +221,7 @@ def main(provider, query_id, force_thoughts=False, model=None):
             accuracy_score = execution_accuracy(df_golden, df_generated)
             print(f"Accuracy Score: \033[92m{accuracy_score * 100:.2f}%\033[0m")
         except Exception as e:
-            print(f"\033[91mError evaluating accuracy (likely malformed generated SQL): {e}\033[0m")
+            print(f"\033[91m Error evaluating accuracy (likely malformed generated SQL): {e}\033[0m")
     else:
         print("\033[91mAccuracy Score: 0.00% (Execution Failed or No Query)\033[0m")
 

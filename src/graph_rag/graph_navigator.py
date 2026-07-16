@@ -3,11 +3,12 @@ from networkx.readwrite import json_graph
 import json
 import itertools
 import os
+from paths import get_graph_path
 
 JOIN_ALTERNATIVE_THRESHOLD = 0.3  # The second condition must have at least 30% of the first condition's weight
 
-def load_graph(filename='data/graphs/property_graph.json'):
-    
+def load_graph(db_name):
+    filename = get_graph_path(db_name)
     if not os.path.exists(filename):
         print(f"Warning: Graph file not found at {filename}")
         return nx.Graph()
@@ -37,8 +38,8 @@ def _format_join_conditions(edge_data):
     return selected
 
 
-def graph_navigator(tables: list, top_k_meta=3):
-    G = load_graph()
+def graph_navigator(tables: list, db_name: str, top_k_meta=3):
+    G = load_graph(db_name)
     
     # filter out hallucinated or missing tables
     valid_tables = [t for t in tables if G.has_node(t)]
@@ -128,12 +129,13 @@ def graph_navigator(tables: list, top_k_meta=3):
     return prompt
 
 if __name__ == "__main__":
+    db_name = 'toxicology'
     # test scenarios
     print("--- TEST 1: Two tables ---")
-    print(graph_navigator(['molecule', 'connected']))
+    print(graph_navigator(['molecule', 'connected'], db_name))
     
     print("\n--- TEST 2: Three tables ---")
-    print(graph_navigator(['molecule', 'atom', 'connected']))
+    print(graph_navigator(['molecule', 'atom', 'connected'], db_name))
     
     print("\n--- TEST 3: One table ---")
-    print(graph_navigator(['molecule']))
+    print(graph_navigator(['molecule'], db_name))
