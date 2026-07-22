@@ -22,7 +22,7 @@ def load_tables(spark_session, db_name):
 def _get_column_overrides(db_path, table):
     db_conn = sqlite3.connect(db_path)
     cursor = db_conn.cursor()
-    cursor.execute(f"PRAGMA table_info({table})")
+    cursor.execute(f'PRAGMA table_info("{table}")')
     overrides = []
     for row in cursor.fetchall():
         col_name = row[1]
@@ -54,7 +54,7 @@ def load_bird_tables(spark_session, db_name):
         custom_schema = ",".join(overrides) if overrides else None
         read_options = {
             "url": jdbc_url,
-            "dbtable": table,
+            "dbtable": f'"{table}"',
             "driver": "org.sqlite.JDBC",
         }
         if custom_schema:

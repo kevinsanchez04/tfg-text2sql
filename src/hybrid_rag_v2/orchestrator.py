@@ -10,21 +10,21 @@ You are a master SparkSQL data analyst.
 4. STRICT CASING: Pay close attention to the capitalization in the Sample Data. If the sample values for a column are strictly lowercase, you MUST convert your filtering strings to lowercase to match the database format.
 """
 
-def get_hybrid_context(nl_query: str, query_id: int, llm, spark_sql, embedder) -> str:
+def get_hybrid_context(nl_query: str, query_id: int, llm, spark_sql, embedder, db_name: str) -> str:
     """
     Combines semantic context from Vector DB, structural context from Graph,
     and filtered entity resolution samples.
     """
     # Fetch semantic context (Few-Shot examples)
-    vector_context = get_similar_queries_context(nl_query, exclude_query_id=query_id)
+    vector_context = get_similar_queries_context(nl_query, exclude_query_id=query_id, db_name=db_name)
     vector_text = vector_context[0] if isinstance(vector_context, tuple) else vector_context
 
     # Fetch required tables and strictly filtered sample values
     all_tables = spark_sql.get_usable_table_names()
-    selected_tables, entity_samples = extract_tables_from_query(nl_query, all_tables, llm)
+    selected_tables, entity_samples = extract_tables_from_query(nl_query, all_tables, llm, db_name=db_name)
     
     # Fetch structural context (AST Patterns and JOIN paths)
-    graph_context = graph_navigator(nl_query=nl_query, tables=selected_tables, embedder=embedder)
+    graph_context = graph_navigator(nl_query=nl_query, tables=selected_tables, embedder=embedder, db_name=db_name)
     
     # Build the final prompt sequentially
     enriched_context = INSTRUCTIONS

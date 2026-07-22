@@ -20,3 +20,8 @@ __pycache__/
 logs/
 
 data/
+
+*.sqlite
+*.sqlite3
+*.bin
+db/vector_store/

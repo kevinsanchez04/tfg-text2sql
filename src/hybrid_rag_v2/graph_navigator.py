@@ -104,6 +104,8 @@ def graph_navigator(nl_query: str,
 
             for source_table in connected_tables:
                 for target_table in pending_tables:
+                    if source_table == target_table:
+                        continue
                     # Look for short paths (cutoff=3) to prevent overly complex routing
                     paths = list(nx.all_simple_paths(graph,source=source_table,target=target_table,cutoff=3))
                     
@@ -145,7 +147,8 @@ def graph_navigator(nl_query: str,
                 # Absorb the found path into our connected component
                 relevant_nodes.update(best_path)
                 connected_tables.update(best_path)
-                pending_tables.remove(selected_target)
+                #pending_tables.remove(selected_target)
+                pending_tables -= set(best_path)
 
                 # Extract the specific SQL conditions used historically between these nodes
                 for i in range(len(best_path) - 1):

@@ -86,7 +86,7 @@ def graph_navigator(tables: list, db_name: str, top_k_meta=3):
                     t_a, t_b = sorted([n1, n2])
 
                     alt_conditions = _format_join_conditions(edge_data)
-                    if len(alt_conditions == 1):
+                    if len(alt_conditions) == 1:
                         join_conditions.add(f"- For joining {t_a} and {t_b} use: {alt_conditions[0]}")
                     else:
                         alt_str = " OR ".join(alt_conditions)

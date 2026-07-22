@@ -44,7 +44,6 @@ from hybrid_rag_v2.orchestrator import get_hybrid_context
 #from hybrid_rag_v1.orchestrator import get_hybrid_context
 
 # Configuration
-DB_NAME = "toxicology"
 BENCHMARK_FILE = "db/bird-1/dev.json"
 NULL_TOKEN = "__NULL__"
 
@@ -132,7 +131,7 @@ def execution_accuracy(df_gt, df_inf):
 
 
 
-def get_query_details(query_id):
+def get_query_details(query_id, db_name):
     """Fetches the natural language question and golden SQL from the dataset."""
     if not os.path.exists(BENCHMARK_FILE):
         raise FileNotFoundError(f"Dataset not found at: {BENCHMARK_FILE}")
@@ -141,19 +140,19 @@ def get_query_details(query_id):
         data = json.load(f)
         
     for item in data:
-        if item.get('question_id') == query_id:
+        if item.get('question_id') == query_id and item.get('db_id') == db_name:
             return item.get('question'), item.get('SQL')
             
-    raise ValueError(f"QID {query_id} not found in the dataset.")
+    raise ValueError(f"QID {query_id} not found for db '{db_name}'.")
 
-def main(provider, query_id, force_thoughts=False, model=None):
+def main(provider, query_id, db_name, force_thoughts=False, model=None):
     if force_thoughts:
         config.FORCE_THOUGHT_GENERATION = True
         print("[Config] Force thought generation: ENABLED")
 
     # Fetch original question and expected SQL
     try:
-        nl_query, golden_sql = get_query_details(query_id)
+        nl_query, golden_sql = get_query_details(query_id, db_name)
     except Exception as e:
         print(f"Error: {e}")
         sys.exit(1)
@@ -161,7 +160,7 @@ def main(provider, query_id, force_thoughts=False, model=None):
     print("=" * 60)
     print(" HYBRID RAG V2 - SINGLE QUERY TEST ")
     print("=" * 60)
-    print(f"Database: {DB_NAME}")
+    print(f"Database: {db_name}")
     print("=" * 60)
 
     # Setup Local Spark Session
@@ -171,7 +170,7 @@ def main(provider, query_id, force_thoughts=False, model=None):
         "spark.jars": jdbc_jar_path,
         "spark.driver.extraClassPath": jdbc_jar_path,
     })
-    load_tables(spark, DB_NAME)
+    load_tables(spark, db_name)
 
     # Setup Agent & LLM
     print(f"[*] Initializing LLM ({provider}) and Spark Agent...")
@@ -186,7 +185,8 @@ def main(provider, query_id, force_thoughts=False, model=None):
         query_id=query_id, 
         llm=llm, 
         spark_sql=spark_sql,
-        embedder=HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+        embedder=HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2"),
+        db_name=db_name
     )
 
 
@@ -250,6 +250,7 @@ def main(provider, query_id, force_thoughts=False, model=None):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Test NL to SparkSQL agent using Hybrid V2.")
     parser.add_argument("--qid", type=int, required=True, help="Question ID to evaluate (e.g. 210)")
+    parser.add_argument("--db", type=str, required=True, help="db_id (e.g. toxicology)")
     parser.add_argument("--provider", type=str, default=Provider.GOOGLE.value, help="LLM provider (default: google)")
     parser.add_argument("--model", type=str, help="Specific model name (e.g., o1, o3-mini, gpt-4)")
     parser.add_argument("--force-thoughts", action="store_true", help="Force text thought generation before tool calls")
@@ -259,6 +260,7 @@ if __name__ == "__main__":
     main(
         provider=args.provider, 
         query_id=args.qid,
+        db_name=args.db,
         force_thoughts=args.force_thoughts, 
         model=args.model
     )
