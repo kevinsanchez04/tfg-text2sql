@@ -25,3 +25,5 @@ data/
 *.sqlite3
 *.bin
 db/vector_store/
+
+*.sh

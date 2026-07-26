@@ -2,7 +2,7 @@ import json
 import os
 import argparse
 
-def main(input_log_path, output_log_path):
+def main(input_log_path, output_log_path, db_id):
     dev_file_path = "db/bird-1/dev.json"
 
     if not os.path.exists(input_log_path) or not os.path.exists(dev_file_path):
@@ -15,7 +15,7 @@ def main(input_log_path, output_log_path):
 
     golden_queries_map = {}
     for item in benchmark_data:
-        if item.get("db_id") == "toxicology":
+        if item.get("db_id") == db_id:
             golden_queries_map[item["question_id"]] = {
                 "nl_query": item["question"],
                 "golden_query": item["SQL"]
@@ -54,6 +54,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Simplify agent execution logs for easier analysis.")
     parser.add_argument("--input", type=str, required=True, help="Path to the raw input log file (e.g., logs/rag_toxicology.json)")
     parser.add_argument("--output", type=str, required=True, help="Path for the simplified output JSON (e.g., simplified_analysis_rag.json)")
-    
+    parser.add_argument("--db_id", type=str, required=True, help="Database ID to filter queries (e.g., toxicology)")
+
     args = parser.parse_args()
-    main(args.input, args.output)
+    main(args.input, args.output, args.db_id)
