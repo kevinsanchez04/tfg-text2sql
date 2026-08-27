@@ -58,7 +58,7 @@ def run_evaluation(db_name, arch, provider, model=None, force_thoughts=False):
     load_tables(spark, db_name)
 
     embedder = None
-    if arch == "hybrid_v2":
+    if arch == "hybrid_v2" or arch.startswith("hybrid_v2_no_") or arch.startswith("hybrid_v2_alpha_"):
         from langchain_huggingface import HuggingFaceEmbeddings
 
         # Load embedding model.

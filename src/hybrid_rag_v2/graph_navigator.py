@@ -56,7 +56,8 @@ def graph_navigator(nl_query: str,
                     tables: list,
                     db_name: str,
                     embedder=None,
-                    top_k_metadata=3):
+                    top_k_metadata=3,
+                    alpha=0.4):
     """
     Builds the structural context for the LLM. 
     It finds the best JOIN paths connecting the requested tables and appends 
@@ -132,8 +133,7 @@ def graph_navigator(nl_query: str,
 
                         # Hybrid routing score: combines historical frequency with semantic relevance
                         # to reduce the bias toward highly connected tables
-                        ALPHA = 0.4
-                        total_score = (ALPHA*historical_score) + ((1-ALPHA) * semantic_score)
+                        total_score = (alpha*historical_score) + ((1-alpha) * semantic_score)
                         
                        # Penalize longer paths to favor shorter ones
                         total_score = total_score * (0.95 ** (num_edges - 1))
