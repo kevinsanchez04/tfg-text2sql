@@ -1,73 +1,94 @@
-# Enhancing Text-to-SQL Systems in Complex Domains using a Hybrid RAG Architecture
+# Text-to-SQL over Apache Spark: A Comparative Study of RAG Architectures
 
-A research framework for the comparative evaluation of five Text-to-SQL architectures (**Baseline Zero-Shot**, **Vector RAG**, **Graph RAG**, **Hybrid RAG V1**, and **Hybrid RAG V2**) over the [BIRD](https://bird-bench.github.io/) benchmark, using a ReAct agent built with LangChain/LangGraph and executed on Apache Spark.
+This repository contains the full implementation of a Bachelor's Final Degree Project (TFG) that designs, implements and benchmarks five Retrieval-Augmented Generation (RAG) architectures for the **Text-to-SQL** task.
 
-The system orchestrates a comprehensive ablation study (*Leave-One-Out* methodology) to measure *Execution Accuracy*, token cost, and execution robustness of each architecture across five relational domains with varying topologies: `toxicology`, `financial`, `superhero`, `formula_1`, and `codebase_community`.
+The system is executed against **Apache Spark / SparkSQL** using a **LangChain/LangGraph ReAct agent** and evaluated on five relational databases with varying topologies from the [BIRD benchmark](https://bird-bench.github.io/):
 
-This repository is a **research and experimentation framework**, not an end-user application: there is no GUI, and its primary usage is through command-line scripts.
+- `toxicology`
+- `financial`
+- `superhero`
+- `formula_1`
+- `codebase_community`
 
-## Table of Contents
+The full technical write-up (methodology, algorithmic analysis, complexity study, and experimental results) is available in the accompanying thesis document.
 
-- [Prerequisites](#prerequisites)
-- [Installation](#installation)
-- [Credentials Configuration](#credentials-configuration)
-- [Data Preparation (BIRD)](#data-preparation-bird)
-- [Offline Pipeline: Vector Index and Property Graph Construction](#offline-pipeline-vector-index-and-property-graph-construction)
-- [Running Evaluation Experiments](#running-evaluation-experiments)
-- [Results Analysis and Plot Generation](#results-analysis-and-plot-generation)
-- [Repository Structure](#repository-structure)
-- [Available Architectures](#available-architectures)
-- [Main Hyperparameters](#main-hyperparameters)
+This README focuses on setting up the environment, running the code, and reproducing the experiments.
 
-## Prerequisites
+---
+
+## Architectures
+
+| Key | Name | Description |
+|---|---|---|
+| `baseline` | **Baseline (Zero-Shot)** | The natural-language question is sent to the agent with no retrieved context. |
+| `vector` | **Vector RAG** | Retrieves the top-K most semantically similar past questions using ChromaDB and `all-MiniLM-L6-v2`, providing them as few-shot examples. A Leave-One-Out strategy is used to prevent data leakage. |
+| `graph` | **Graph RAG** | Routes the question to the relevant tables using an LLM-based schema linker and retrieves join rules and historical usage metadata from a property graph built from the ASTs of past golden queries using NetworkX. |
+| `hybrid_v1` | **Hybrid RAG V1** | Concatenates the Vector RAG semantic examples with the Graph RAG structural context using vanilla fusion. |
+| `hybrid_v2` | **Hybrid RAG V2** | Extends Hybrid V1 with entity resolution, filtered sample values for the selected tables, an ALPHA-weighted graph navigator that blends historical frequency with query-path semantic similarity, and negative-prompting instructions. |
+
+> **Note on Ablation:** Three additional ablation variants of Hybrid RAG V2 are implemented to isolate the contribution of each module:
+>
+> - `hybrid_v2_no_entity`
+> - `hybrid_v2_no_alpha`
+> - `hybrid_v2_no_negprompt`
+>
+> An ALPHA sensitivity sweep is also implemented.
+
+---
+
+## Requirements & Setup
+
+### Requirements
 
 - **Python 3.10+**
-- **Java JDK 8, 11, or 17** with `JAVA_HOME` configured (required for Apache Spark / PySpark)
-- **Apache Spark** (installed via `pyspark`, no separate cluster installation needed)
-- Internet access on first run (automatic download of the SQLite JDBC driver)
-- At least one API key from a supported LLM provider:
-  - `GOOGLE_API_KEY` (Google Gemini — default provider)
-  - `ANTHROPIC_API_KEY` (Anthropic Claude)
-  - `OPENAI_API_KEY` (OpenAI)
-  - `CLOUDFLARE_ACCOUNT_ID` + `CLOUDFLARE_API_TOKEN` (Cloudflare Workers AI)
-  - `NVIDIA_API_KEY` (NVIDIA NIM)
+- **Java JDK 8, 11, or 17**
+- `JAVA_HOME` configured
+- **Apache Spark**, installed automatically through `pyspark`
+- No separate Spark cluster installation is required.
 
-## Installation
+### 1. Clone the repository and create a virtual environment
 
 ```bash
-# 1. Clone the repository
-git clone [https://github.com/kevinsanchez04/tfg-text2sql.git](https://github.com/kevinsanchez04/tfg-text2sql.git)
+git clone https://github.com/kevinsanchez04/tfg-text2sql.git
 cd tfg-text2sql
 
-# 2. Create and activate a virtual environment
 python3 -m venv venv
 source venv/bin/activate      # Linux / macOS
-venv\Scripts\activate         # Windows
+# venv\Scripts\activate       # Windows
+```
 
-# 3. Install dependencies
+### 2. Install dependencies
+
+```bash
 pip install -r requirements.txt
 ```
 
-> The SQLite JDBC driver (`sqlite-jdbc-3.47.2.0.jar`) is downloaded automatically into `jars/` the first time any script initializes a Spark session (function `ensure_sqlite_jdbc_driver` in `src/utils.py`). If there is no Internet connection, it must be manually downloaded from Maven Central and placed in `jars/`.
+> **Note:** The SQLite JDBC driver is downloaded automatically into `jars/` the first time a Spark session is initialized.
 
-## Credentials Configuration
+### 3. Configure credentials
 
-Create a `.env` file at the project root (loaded automatically via `python-dotenv`):
+Create a `.env` file at the repository root with the credentials for whichever provider(s) you intend to use.
+
+The default provider is `google` with `gemini-2.5-flash`.
 
 ```env
-GOOGLE_API_KEY=xxxxxxxxxxxxxxxx
-ANTHROPIC_API_KEY=xxxxxxxxxxxxxxxx
-OPENAI_API_KEY=xxxxxxxxxxxxxxxx
-CLOUDFLARE_ACCOUNT_ID=xxxxxxxxxxxxxxxx
-CLOUDFLARE_API_TOKEN=xxxxxxxxxxxxxxxx
-NVIDIA_API_KEY=xxxxxxxxxxxxxxxx
+GOOGLE_API_KEY=your_api_key_here
+ANTHROPIC_API_KEY=...
+OPENAI_API_KEY=...
+NVIDIA_API_KEY=...
+CLOUDFLARE_ACCOUNT_ID=...
+CLOUDFLARE_API_TOKEN=...
 ```
 
-You only need to define the key for the provider you intend to use with `--provider`.
+Only the credentials required by the selected provider need to be configured.
 
-## Data Preparation (BIRD)
+---
 
-This repository **does not include** the BIRD dataset (due to size and licensing). You need to download the `dev` split from [BIRD-SQL](https://bird-bench.github.io/) and place it using the following structure:
+## Data Preparation
+
+This repository **does not include the BIRD dataset**.
+
+You need to download the `dev` split from the [BIRD benchmark](https://bird-bench.github.io/) and place the files using the following structure:
 
 ```text
 db/
@@ -85,132 +106,416 @@ db/
         └── codebase_community.sqlite
 ```
 
-## Offline Pipeline: Vector Index and Property Graph Construction
+---
 
-Before evaluating any architecture with a retrieval component, you must generate the vector index (for Vector RAG and hybrid variants) and the property graph (for Graph RAG and hybrid variants) **for each database**. All scripts are executed from the root of the repository.
+# Quickstart & Pipeline
+
+Before evaluating any architecture with a retrieval component, you must generate the **vector index** and the **property graph** for each database.
+
+---
+
+## 1. Offline Pipeline — Build Retrieval Databases
+
+Set the target database:
 
 ```bash
-DB=toxicology   # replace with: financial | superhero | formula_1 | codebase_community
+DB=toxicology
+```
 
-# 1. Build the vector store in ChromaDB
+Available databases:
+
+```text
+toxicology
+financial
+superhero
+formula_1
+codebase_community
+```
+
+### Build the vector store
+
+The vector store is generated using ChromaDB:
+
+```bash
 python src/vector_rag/build_vector_db.py --db $DB
+```
 
-# 2. Extract the AST of all golden queries for the domain
+### Extract ASTs
+
+Extract the AST of all golden SQL queries:
+
+```bash
 python src/graph_rag/ast_parser.py --db $DB
+```
 
-# 3. Consolidate the AST into the Property Graph (with entity resolution via Spark)
+### Build the property graph
+
+Consolidate the extracted AST information into the property graph:
+
+```bash
 python src/graph_rag/graph_builder.py --db $DB
 ```
 
-This pipeline generates:
-- `db/vector_store/<db_name>/` — Persisted ChromaDB collection
-- `data/ast/<db_name>/ast.json` — AST per query
-- `data/graphs/<db_name>/property_graph.json` — Aggregated property graph
+For example, to prepare the `toxicology` database:
 
-These three steps must be repeated for each of the five domains before running the corresponding experiments.
+```bash
+DB=toxicology
 
-## Running Evaluation Experiments
+python src/vector_rag/build_vector_db.py --db $DB
+python src/graph_rag/ast_parser.py --db $DB
+python src/graph_rag/graph_builder.py --db $DB
+```
 
-### Full benchmark over a domain
+Repeat this process for each database before running the corresponding retrieval-based architectures.
+
+---
+
+## 2. Run a Benchmark
+
+Run the evaluation loop for a specific database and architecture:
 
 ```bash
 python scripts/run_benchmark.py \
-  --db toxicology \
-  --arch hybrid_v2 \
-  --provider google \
-  --model gemini-2.5-flash
+    --db toxicology \
+    --arch hybrid_v2 \
+    --provider google
 ```
 
-Parameters:
-- `--db`: `toxicology` | `financial` | `superhero` | `formula_1` | `codebase_community`
-- `--arch`: `baseline` | `vector` | `graph` | `hybrid_v1` | `hybrid_v2`
-- `--provider`: `google` (default) | `claude` | `openai` | `cloudflare` | `nvidia`
-- `--model`: Specific model name (optional; uses the provider's default model if omitted)
-- `--force-thoughts`: Forces explicit verbalization of the reasoning before each tool call (for debugging only)
+### Available architectures
 
-Results are saved in `logs/<db_name>/<arch>_<db_name>.json`.
+```text
+baseline
+vector
+graph
+hybrid_v1
+hybrid_v2
+```
 
-### Test a single query (debugging, Hybrid RAG V2)
+### Example
+
+Run Hybrid RAG V2 on the `financial` database:
 
 ```bash
-python scripts/test_single_query.py --qid 196 --db toxicology
+python scripts/run_benchmark.py \
+    --db financial \
+    --arch hybrid_v2 \
+    --provider google
 ```
 
-Displays the generated SparkSQL query, compares it with the golden query, calculates the accuracy, and shows the exact prompt sent to the LLM. To debug with Hybrid RAG V1 instead of V2, you must toggle the `get_hybrid_context` import at the top of the file (see code comments).
+---
 
-### Log Simplification
+## 3. Debug a Single Query
+
+For debugging a specific natural-language query without running the entire benchmark:
 
 ```bash
-python scripts/logs_summary.py \
-  --input logs/toxicology/hybrid_v2_toxicology.json \
-  --output data/simplified_hybrid_v2_toxicology.json \
-  --db_id toxicology
+python scripts/test_single_query.py \
+    --qid 196 \
+    --db toxicology
 ```
 
-### Generating Comparative Plots
+This is particularly useful for inspecting the behaviour of the Hybrid RAG V2 pipeline on individual questions.
+
+---
+
+## 4. Generate Results & Plots
+
+Once the evaluation logs have been generated, the academic plots used in the thesis can be recreated.
+
+The script expects logs for all five main architectures to exist:
 
 ```bash
 python scripts/generate_plots.py --db toxicology
 ```
 
-Requires the five files `logs/<db>/{baseline,vector,graph,hybrid_v1,hybrid_v2}_<db>.json` to already exist. Generates the plots in `data/plots/<db_name>/`.
+Generated plots are stored under:
 
-## Repository Structure
+```text
+data/plots/
+```
+
+---
+
+# Evaluation Metric
+
+Correctness is measured using **Execution Accuracy**, implemented in:
+
+```text
+src/evaluation.py
+```
+
+A predicted result is considered correct if and only if:
+
+1. Every column of the golden result appears in the predicted result.
+2. Values match value-for-value.
+3. The row order is preserved.
+4. Extra predicted columns are allowed.
+
+Before comparison, values are normalized to handle differences such as:
+
+- Numeric representation
+- `NULL` tokens
+- Other equivalent representations
+
+This evaluation focuses on whether the generated SQL produces the expected result when executed against SparkSQL.
+
+---
+
+# Repository Structure
 
 ```text
 .
-├── src/
-│   ├── config.py                  # Global configuration and providers
-│   ├── llm.py                     # LLM client factory (Gemini, Claude, OpenAI, Cloudflare, NVIDIA)
-│   ├── load_db.py                 # Loading BIRD/SQLite tables into Spark
-│   ├── paths.py                   # Centralized path resolution (graphs, vector stores, logs...)
-│   ├── evaluation.py              # Execution Accuracy calculation
-│   ├── spark_nl.py                # Agent orchestration, instrumentation, and metrics
-│   ├── benchmark_runner.py        # Generic evaluation loop per architecture/domain
-│   ├── context_strategies.py      # Common adapter for the 5 architectures
-│   ├── spark_toolkit/             # ReAct agent tools over Spark SQL
-│   ├── vector_rag/                # Semantic retrieval (ChromaDB + embeddings)
-│   ├── graph_rag/                 # AST Parser, graph construction and navigation (V1)
-│   ├── hybrid_rag_v1/             # Vanilla fusion orchestrator
-│   └── hybrid_rag_v2/             # Weighted navigator, entity resolution, negative prompting
 ├── scripts/
-│   ├── run_benchmark.py           # Main evaluation entry point
-│   ├── test_single_query.py       # Single query debugging
-│   ├── logs_summary.py            # Raw logs simplification
-│   ├── generate_plots.py          # Comparative plots generation
-│   └── old_scripts/               # Scripts prior to unification via context_strategies.py
+│   ├── run_benchmark.py
+│   │   └── CLI entry point: runs one architecture over one database
+│   │
+│   ├── test_single_query.py
+│   │   └── Debug a single question with Hybrid RAG V2
+│   │
+│   ├── logs_summary.py
+│   │   └── Flattens a raw log file for manual inspection
+│   │
+│   └── generate_plots.py
+│       └── Builds comparative accuracy plots
+│
+├── src/
+│   ├── config.py
+│   │   └── Provider/model registry and global constants
+│   │
+│   ├── paths.py
+│   │   └── Single source of truth for all on-disk paths
+│   │
+│   ├── llm.py
+│   │   └── LLM client factory
+│   │
+│   ├── load_db.py
+│   │   └── SQLite → Spark table loading
+│   │
+│   ├── evaluation.py
+│   │   └── Execution Accuracy metric
+│   │
+│   ├── benchmark_runner.py
+│   │   └── Orchestrates a full benchmark run
+│   │
+│   ├── context_strategies.py
+│   │   └── Registry mapping architecture key → context builder
+│   │
+│   ├── utils.py
+│   │   └── JDBC driver bootstrap and pretty printers
+│   │
+│   ├── spark_toolkit/
+│   │   └── LangGraph ReAct agent + SparkSQL tools
+│   │
+│   ├── vector_rag/
+│   │   └── ChromaDB index builder + retriever
+│   │
+│   ├── graph_rag/
+│   │   └── AST extraction, graph builder and schema linker
+│   │
+│   ├── hybrid_rag_v1/
+│   │   └── Hybrid RAG V1 orchestrator
+│   │
+│   └── hybrid_rag_v2/
+│       ├── V2 orchestrator
+│       ├── ALPHA-weighted graph navigator
+│       └── ablation.py
+│
 ├── db/
-│   ├── bird-1/                    # BIRD Dataset (not included in the repository)
-│   └── vector_store/              # Persisted ChromaDB collections (generated)
+│   ├── bird-1/
+│   │   └── BIRD benchmark data (not versioned)
+│   │
+│   └── vector_store/
+│       └── Persisted ChromaDB collections (generated)
+│
 ├── data/
-│   ├── ast/                       # Extracted ASTs per domain (generated)
-│   ├── graphs/                    # Persisted property graphs (generated)
-│   └── plots/                     # Generated plots
-├── docs/                          # Extra documentation (agent architecture, etc.)
-├── logs/                          # Raw evaluation results per domain/architecture
-└── jars/                          # SQLite JDBC Driver (downloaded automatically)
+│   ├── ast/
+│   │   └── Extracted ASTs per domain (generated)
+│   │
+│   ├── graphs/
+│   │   └── Persisted property graphs (generated)
+│   │
+│   └── plots/
+│       └── Generated plots
+│
+├── docs/
+│   └── AGENT_ARCHITECTURE_EXPLANATION.md
+│
+├── logs/
+│   └── Raw evaluation results per domain/architecture
+│
+├── jars/
+│   └── SQLite JDBC driver (auto-downloaded)
+│
+├── requirements.txt
+├── .env
+└── README.md
 ```
 
-## Available Architectures
+---
 
-| `--arch` Key | Description |
-|---|---|
-| `baseline` | No retrieval context; pure Zero-Shot agent |
-| `vector` | Semantic retrieval of few-shot examples (ChromaDB, Leave-One-Out) |
-| `graph` | Pure structural navigation by frequency weights over the property graph |
-| `hybrid_v1` | Vanilla concatenation of semantic + structural context |
-| `hybrid_v2` | Weighted navigation (semantic + frequency), entity resolution, and negative prompting |
-
-## Main Hyperparameters
+# Main Hyperparameters
 
 | Parameter | Default Value | Location |
-|---|---|---|
-| Top-K (few-shot examples) | `K = 3` | `src/vector_rag/retriever.py` |
-| α (historical vs. semantic weight) | `α = 0.4` | `src/hybrid_rag_v2/graph_navigator.py` |
+|---|---:|---|
+| Top-K few-shot examples | `K = 3` | `src/vector_rag/retriever.py` |
+| α — historical vs. semantic weight | `α = 0.4` | `src/hybrid_rag_v2/graph_navigator.py` |
 | Attenuation factor per hop | `0.95` | `src/hybrid_rag_v2/graph_navigator.py` |
 | Navigation hop limit | `cutoff = 3` | `src/graph_rag/graph_navigator.py`, `src/hybrid_rag_v2/graph_navigator.py` |
-| Embeddings model | `all-MiniLM-L6-v2` (d=384) | `src/vector_rag/retriever.py`, `src/hybrid_rag_v2/graph_navigator.py` |
+| Embeddings model | `all-MiniLM-L6-v2` | `src/vector_rag/retriever.py`, `src/hybrid_rag_v2/graph_navigator.py` |
+| Embedding dimension | `384` | `all-MiniLM-L6-v2` |
 | LLM Temperature | `0.0` | `src/config.py` |
 
-## License & Citation
-This project was developed as a Bachelor's Thesis (TFG) in Computer Engineering at Universitat Rovira i Virgili (URV).
+---
+
+# Architecture Overview
+
+The five evaluated architectures progressively introduce additional retrieval and reasoning capabilities:
+
+```text
+                         Natural Language Question
+                                   │
+                                   ▼
+                          ┌─────────────────┐
+                          │    Baseline     │
+                          │    Zero-Shot    │
+                          └─────────────────┘
+                                   │
+                                   ▼
+                    ┌──────────────────────────┐
+                    │       Vector RAG         │
+                    │ Semantic Few-Shot        │
+                    │ ChromaDB + Embeddings    │
+                    └──────────────────────────┘
+                                   │
+                                   ▼
+                    ┌──────────────────────────┐
+                    │        Graph RAG         │
+                    │ Schema Linking           │
+                    │ Property Graph           │
+                    │ Join / Usage Metadata    │
+                    └──────────────────────────┘
+                                   │
+                                   ▼
+                    ┌──────────────────────────┐
+                    │      Hybrid RAG V1       │
+                    │ Vector + Graph Context   │
+                    └──────────────────────────┘
+                                   │
+                                   ▼
+                    ┌──────────────────────────┐
+                    │      Hybrid RAG V2       │
+                    │                          │
+                    │ + Entity Resolution      │
+                    │ + Sample Values          │
+                    │ + ALPHA Navigator        │
+                    │ + Semantic Path Scoring  │
+                    │ + Negative Prompting     │
+                    └──────────────────────────┘
+                                   │
+                                   ▼
+                         ┌──────────────────┐
+                         │ LangGraph ReAct  │
+                         │ Agent + SparkSQL │
+                         └──────────────────┘
+                                   │
+                                   ▼
+                            SparkSQL Result
+```
+
+---
+
+# Documentation
+
+For a deeper dive into the agent's logic and the ReAct cycle implementation, see:
+
+- [`docs/AGENT_ARCHITECTURE_EXPLANATION.md`](docs/AGENT_ARCHITECTURE_EXPLANATION.md) — Detailed explanation of the agent architecture, ReAct cycle, EarlyExit strategy and tool catalog.
+
+---
+
+# Reproducibility
+
+To reproduce the experiments from scratch:
+
+### Step 1 — Install the environment
+
+```bash
+git clone https://github.com/kevinsanchez04/tfg-text2sql.git
+cd tfg-text2sql
+
+python3 -m venv venv
+source venv/bin/activate
+
+pip install -r requirements.txt
+```
+
+### Step 2 — Configure the API provider
+
+Create the `.env` file:
+
+```env
+GOOGLE_API_KEY=your_api_key_here
+```
+
+### Step 3 — Download BIRD
+
+Place the required BIRD `dev` split under:
+
+```text
+db/bird-1/
+```
+
+### Step 4 — Build the retrieval resources
+
+For each database:
+
+```bash
+DB=toxicology
+
+python src/vector_rag/build_vector_db.py --db $DB
+python src/graph_rag/ast_parser.py --db $DB
+python src/graph_rag/graph_builder.py --db $DB
+```
+
+Repeat for:
+
+```text
+financial
+superhero
+formula_1
+codebase_community
+```
+
+### Step 5 — Run the benchmarks
+
+For example:
+
+```bash
+python scripts/run_benchmark.py --db toxicology --arch baseline --provider google
+python scripts/run_benchmark.py --db toxicology --arch vector --provider google
+python scripts/run_benchmark.py --db toxicology --arch graph --provider google
+python scripts/run_benchmark.py --db toxicology --arch hybrid_v1 --provider google
+python scripts/run_benchmark.py --db toxicology --arch hybrid_v2 --provider google
+```
+
+Repeat for the remaining databases.
+
+### Step 6 — Generate the plots
+
+```bash
+python scripts/generate_plots.py --db toxicology
+```
+
+---
+
+# License & Citation
+
+This project was developed as a **Bachelor's Thesis (TFG) in Computer Engineering** at **Universitat Rovira i Virgili (URV)**.
+
+If you use this repository or build upon the implementation, please cite the corresponding thesis.
+
+```text
+Text-to-SQL over Apache Spark: A Comparative Study of RAG Architectures
+Bachelor's Final Degree Project (TFG)
+Computer Engineering
+Universitat Rovira i Virgili (URV)
+```
