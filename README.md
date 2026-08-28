@@ -426,10 +426,12 @@ The five evaluated architectures progressively introduce additional retrieval an
 
 # Documentation
 
-For a deeper dive into the agent's logic and the ReAct cycle implementation, see:
+The repository includes additional documentation covering the system architecture, datasets, experimental methodology, and agent implementation.
 
-- [`docs/AGENT_ARCHITECTURE_EXPLANATION.md`](docs/AGENT_ARCHITECTURE_EXPLANATION.md) — Detailed explanation of the agent architecture, ReAct cycle, EarlyExit strategy and tool catalog.
-
+- [`docs/Architecture.md`](docs/Architecture.md) — Overview of the RAG architectures, system components, and how the different retrieval strategies are integrated into the Text-to-SQL pipeline.
+- [`docs/Dataset.md`](docs/Dataset.md) — Documentation of the BIRD databases used in the experiments, their characteristics, schemas, and data preparation.
+- [`docs/Experiment_guide.md`](docs/Experiment_guide.md) — Step-by-step guide for reproducing the experiments, running the benchmarks, configuring the different architectures, and generating the results.
+- [`docs/AGENT_ARCHITECTURE_EXPLANATION.md`](docs/AGENT_ARCHITECTURE_EXPLANATION.md) — Detailed explanation of the LangGraph ReAct agent, its execution cycle, EarlyExit strategy, and SparkSQL tool catalog.
 ---
 
 # Reproducibility
